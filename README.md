@@ -277,7 +277,7 @@ Create an environment with Python 3.9+ and install the core dependencies:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r scripts/requirements.txt
 ```
 
 `ffmpeg` is required for video encoding/decoding workflows and should be
@@ -292,7 +292,7 @@ not committed to this repository.
 Run the frozen benchmark on any prepared or fresh REDS validation clip IDs:
 
 ```bash
-bash run_mcft_best_texture_benchmark.sh 011 015 018
+bash scripts/run_mcft_best_texture_benchmark.sh 011 015 018
 ```
 
 The script prepares missing clips, estimates the degradation model, builds the
@@ -309,7 +309,7 @@ LOG_EVERY=100 \
 OUTPUT=mcft_net_confidence_texture.pth \
 TEXTURE_WEIGHT=0.03 \
 GRADIENT_WEIGHT=0.20 \
-bash run_mcft_mixed_replay.sh
+bash scripts/run_mcft_mixed_replay.sh
 ```
 
 Hugging Face authentication may be needed depending on dataset access and local
@@ -327,7 +327,7 @@ configuration. Do not commit Hugging Face tokens.
 | `prepare_reds_val4.py` | REDS validation clip preparation |
 | `estimate_degradation.py` | Degradation-model estimation |
 | `evaluate_against_ground_truth.py` | PSNR/SSIM/edge/temporal evaluation |
-| `run_mcft_best_texture_benchmark.sh` | Frozen benchmark runner |
+| `scripts/run_mcft_best_texture_benchmark.sh` | Frozen benchmark runner |
 | `summarize_mcft_benchmark.py` | Per-clip to aggregate summary builder |
 | `analyze_mcft_failures.py` | Failure-frame ranking and diagnostic panels |
 
