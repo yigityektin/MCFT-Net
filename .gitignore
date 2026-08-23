@@ -1,0 +1,64 @@
+# System/editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments and local caches
+.venv*/
+venv/
+env/
+.torch-cache/
+.cache/
+
+# Large datasets, videos, and generated benchmark artifacts
+external_benchmarks/
+HAT/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.npz
+*.npy
+*.zip
+*.json
+
+# Old/generated local experiment folders
+ag_mcf_hat_out_5s/
+anchor_guided_analysis_plots/
+cmp_hat_anchor/
+flow_freq_out/
+mcft_*_ablation/
+mcft_*_smoke/
+mcft_*_metrics/
+mcft_multiframe_direction_audit/
+mv_plots/
+old mv metrics/
+
+# Model checkpoints and binary model artifacts
+*.pth
+*.pt
+*.onnx
+*.joblib
+
+# Generated metrics/results in the workspace root.
+# Keep curated reports in markdown; regenerate CSVs locally when needed.
+*.csv
+
+# Public GitHub surface: keep README as the main document.
+*.md
+!README.md
