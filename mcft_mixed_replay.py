@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2,numpy as np,torch
 from torch import nn
 from torch.utils.data import DataLoader,Dataset
-from mcft_net import build_model,collect,device_for,gradient_loss,make_confidence_input
+from mcft_net import build_model,collect,device_for,gradient_loss,make_confidence_input,read_base_frame
 from mcft_hf_stream import VimeoMCFTStream
 
 
@@ -21,16 +21,18 @@ class PairDataset(Dataset):
         return tuple(result)
 
 
-def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed,max_frames=0):
+def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed,max_frames=0,base_path=None):
     anchors=sorted(json.loads(Path(anchor_path).read_text())['anchor_indices']);aset=set(anchors)
     caps=[cv2.VideoCapture(p) for p in (gt_path,lr_path,candidate_path)];rng=np.random.default_rng(seed)
+    base_cap=cv2.VideoCapture(base_path) if base_path else None
+    if base_path and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {base_path}')
     items=[];previous=None;index=0
     while True:
         reads=[cap.read() for cap in caps]
         if not all(ok for ok,_ in reads) or (max_frames and index>=max_frames):break
         gt,lr,candidate=[frame for _,frame in reads]
         if index not in aset:
-            base=cv2.resize(lr,(gt.shape[1],gt.shape[0]),interpolation=cv2.INTER_CUBIC)
+            base=read_base_frame(base_cap,lr,index,gt.shape[1],gt.shape[0])
             current=(make_confidence_input(base,candidate,lr,index,anchors),gt,lr,index)
             if previous is not None and previous[3]==index-1:
                 h,w=gt.shape[:2]
@@ -46,6 +48,7 @@ def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed
         else:previous=None
         index+=1
     [cap.release() for cap in caps]
+    if base_cap:base_cap.release()
     if not items:raise RuntimeError('No adjacent non-anchor REDS pairs were collected')
     return PairDataset(items)
 
@@ -145,8 +148,8 @@ def train(args):
     teacher=build_model('confidence',checkpoint['width'],checkpoint['blocks']).to(device);teacher.load_state_dict(checkpoint['state']);teacher.eval()
     for p in teacher.parameters():p.requires_grad_(False)
     reference={name:p.detach().clone() for name,p in model.named_parameters()}
-    pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames)
-    validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,0,'confidence')
+    pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base)
+    validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,0,'confidence',args.val_base)
     optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4);best=math.inf
     for epoch in range(args.epochs):
         reds_loader=DataLoader(pairs,batch_size=args.batch_size,shuffle=True,num_workers=0);reds_iter=iter(reds_loader)
@@ -167,6 +170,8 @@ def train(args):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('init','output','reds-gt','reds-lr','reds-candidate','reds-anchors','val-gt','val-lr','val-candidate','val-anchors'):p.add_argument('--'+name,required=True)
+    p.add_argument('--reds-base',help='Optional HR-size modern SR/base-prior video for REDS replay.')
+    p.add_argument('--val-base',help='Optional HR-size modern SR/base-prior video for validation.')
     p.add_argument('--epochs',type=int,default=1);p.add_argument('--vimeo-triplets',type=int,default=100);p.add_argument('--vimeo-patches-per-triplet',type=int,default=2);p.add_argument('--reds-patches-per-pair',type=int,default=2);p.add_argument('--reds-steps-per-vimeo',type=int,default=3)
     p.add_argument('--patch',type=int,default=96);p.add_argument('--batch-size',type=int,default=8);p.add_argument('--val-patches-per-frame',type=int,default=4);p.add_argument('--max-reds-frames',type=int,default=0)
     p.add_argument('--lr',type=float,default=5e-5);p.add_argument('--distill-weight',type=float,default=0.10);p.add_argument('--edge-weight',type=float,default=0.05);p.add_argument('--ssim-weight',type=float,default=0.05);p.add_argument('--gradient-weight',type=float,default=0.15);p.add_argument('--texture-weight',type=float,default=0.0);p.add_argument('--temporal-weight',type=float,default=0.10);p.add_argument('--l2sp-weight',type=float,default=0.01)

@@ -67,10 +67,13 @@ frequency based proposal.
 
 For each non-anchor frame, MCFT v3 performs the following steps.
 
-1. **Bicubic base construction**
+1. **Base construction**
 
-   The LR frame is bicubic-upsampled to HR size. This gives reliable low
-   frequency structure but weak detail.
+   The default reproducible path upsamples the LR frame with bicubic to create
+   an HR-size base. For modern-base experiments, this base can instead come from
+   an external SR model such as HAT, SwinIR, Real-ESRGAN, EDVR, or BasicVSR++.
+   In that setup MCFT becomes an anchor-aware refinement layer over the modern
+   SR prior.
 
 2. **Anchor lookup**
 
@@ -92,8 +95,10 @@ For each non-anchor frame, MCFT v3 performs the following steps.
 5. **Frequency-band transfer**
 
    MCFT separates luma information into low, mid, and high-frequency structure.
-   The LR/bicubic frame supplies stable low-frequency content; warped anchors
-   supply high-frequency residual proposals.
+   The base frame supplies stable low-frequency content; warped anchors supply
+   high-frequency residual proposals. If a modern base is used, anchor residuals
+   are measured relative to that same modern base rather than relative to
+   bicubic.
 
 6. **Local phase/refinement**
 
@@ -123,8 +128,8 @@ parameters: 173,732
 ```
 
 The model receives a multi-channel confidence/refinement tensor built from the
-bicubic/base frame, deterministic MCFT candidate, residual information,
-LR-consistency features, and anchor-distance/confidence features. It predicts a
+base frame, deterministic MCFT candidate, residual information, LR-consistency
+features, and anchor-distance/confidence features. It predicts a
 bounded correction around the base/candidate rather than an unconstrained image.
 
 Conceptually:
@@ -136,6 +141,10 @@ output = refined HR frame
 
 This makes the method closer to a learned trust/refinement module than a full
 standalone VSR model.
+
+Important: a network trained with bicubic-base MCFT inputs should not be assumed
+to work on HAT/SwinIR/Real-ESRGAN-base inputs. Modern-base MCFT-Net requires
+training or fine-tuning with the same base family used at inference.
 
 ## Hugging Face Streaming Data
 
@@ -312,6 +321,24 @@ GRADIENT_WEIGHT=0.20 \
 bash scripts/run_mcft_mixed_replay.sh
 ```
 
+For modern-base training, pass HR-size base-prior videos:
+
+```bash
+.venv-hat/bin/python mcft_mixed_replay.py \
+  --init mcft_net_confidence_reds_best.pth \
+  --output mcft_net_confidence_modernbase.pth \
+  --reds-gt external_benchmarks/REDS-Val4/train_000_001_gt.mkv \
+  --reds-lr external_benchmarks/REDS-Val4/train_000_001_lr.mkv \
+  --reds-candidate external_benchmarks/REDS-Val4/train_000_001_mcft_modernbase.mkv \
+  --reds-base /path/to/train_modern_sr_base.mkv \
+  --reds-anchors external_benchmarks/REDS-Val4/train_000_001_anchors.json \
+  --val-gt external_benchmarks/REDS-Val4/006/gt.mkv \
+  --val-lr external_benchmarks/REDS-Val4/006/lr_x2.mkv \
+  --val-candidate external_benchmarks/REDS-Val4/006/mcft_modernbase.mkv \
+  --val-base /path/to/val_modern_sr_base.mkv \
+  --val-anchors external_benchmarks/REDS-Val4/006/anchors_10pct.json
+```
+
 Hugging Face authentication may be needed depending on dataset access and local
 configuration. Do not commit Hugging Face tokens.
 
@@ -328,6 +355,7 @@ configuration. Do not commit Hugging Face tokens.
 | `estimate_degradation.py` | Degradation-model estimation |
 | `evaluate_against_ground_truth.py` | PSNR/SSIM/edge/temporal evaluation |
 | `scripts/run_mcft_best_texture_benchmark.sh` | Frozen benchmark runner |
+| `scripts/run_bbb_hatbase_experiment.sh` | BBB modern-base experiment runner |
 | `summarize_mcft_benchmark.py` | Per-clip to aggregate summary builder |
 | `analyze_mcft_failures.py` | Failure-frame ranking and diagnostic panels |
 

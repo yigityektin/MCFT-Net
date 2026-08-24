@@ -10,6 +10,7 @@ EVAL_NAME="${EVAL_NAME:-confidence_mixed_replay_ssim_500_texture_independent_qua
 SUMMARY_OUT="${SUMMARY_OUT:-$ROOT/mcft_best_texture_summary.csv}"
 SUMMARY_MD="${SUMMARY_MD:-$ROOT/mcft_best_texture_summary.md}"
 FORCE="${FORCE:-0}"
+BASE_VIDEO="${BASE_VIDEO:-}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 
 if (($#)); then
@@ -35,8 +36,13 @@ for CLIP in "${CLIPS[@]}"; do
   fi
 
   if [[ "$FORCE" == "1" || ! -f "$DIR/mcft_v3.mkv" ]]; then
+    BASE_ARGS=()
+    if [[ -n "$BASE_VIDEO" ]]; then
+      BASE_ARGS=(--base-video "$BASE_VIDEO")
+    fi
     "$PYTHON_BIN" mcft_constrained_reconstruct.py \
       --ground-truth "$DIR/gt.mkv" --low-resolution "$DIR/lr_x2.mkv" \
+      "${BASE_ARGS[@]}" \
       --anchors "$DIR/anchors_10pct.json" --output-dir "$DIR/mcft_metrics" \
       --output-video "$DIR/mcft_v3.mkv" --stride 1 --max-frames 100 \
       --gradient-source residual-multiscale --chroma-strength 0.125 \
@@ -44,10 +50,15 @@ for CLIP in "${CLIPS[@]}"; do
   fi
 
   if [[ "$FORCE" == "1" || ! -f "$OUT" ]]; then
+    BASE_ARGS=()
+    if [[ -n "$BASE_VIDEO" ]]; then
+      BASE_ARGS=(--base-video "$BASE_VIDEO")
+    fi
     "$TORCH_PYTHON" mcft_net.py infer \
       --model "$MODEL" \
       --candidate "$DIR/mcft_v3.mkv" \
       --low-resolution "$DIR/lr_x2.mkv" \
+      "${BASE_ARGS[@]}" \
       --anchors "$DIR/anchors_10pct.json" \
       --output "$OUT" \
       --tile 0 \

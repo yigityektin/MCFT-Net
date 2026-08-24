@@ -109,6 +109,16 @@ def make_confidence_input(base,candidate,lr,index,anchors):
     return np.concatenate((feature,observation,edge,texture),axis=2)
 
 
+def read_base_frame(base_cap, lr_frame, index, width, height):
+    if base_cap is None:
+        return cv2.resize(lr_frame,(width,height),interpolation=cv2.INTER_CUBIC)
+    base_cap.set(cv2.CAP_PROP_POS_FRAMES,index);ok,base=base_cap.read()
+    if not ok:raise RuntimeError(f'Cannot read base frame {index}')
+    if base.shape[1]!=width or base.shape[0]!=height:
+        base=cv2.resize(base,(width,height),interpolation=cv2.INTER_CUBIC)
+    return base
+
+
 class PatchDataset(Dataset):
     def __init__(self,inputs,targets,observations):self.inputs=inputs;self.targets=targets;self.observations=observations
     def __len__(self):return len(self.inputs)
@@ -119,16 +129,18 @@ class PatchDataset(Dataset):
         return x,y,lr
 
 
-def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy'):
+def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy',base_path=None):
     anchors=sorted(json.loads(Path(anchor_path).read_text())['anchor_indices']);aset=set(anchors)
     caps=[cv2.VideoCapture(p) for p in (gt_path,lr_path,candidate_path)];rng=np.random.default_rng(seed)
+    base_cap=cv2.VideoCapture(base_path) if base_path else None
+    if base_path and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {base_path}')
     inputs=[];targets=[];observations=[];index=0
     while True:
         reads=[cap.read() for cap in caps]
         if not all(ok for ok,_ in reads) or (max_frames and index>=max_frames):break
         gt,lr,candidate=[frame for _,frame in reads]
         if index not in aset:
-            base=cv2.resize(lr,(gt.shape[1],gt.shape[0]),interpolation=cv2.INTER_CUBIC)
+            base=read_base_frame(base_cap,lr,index,gt.shape[1],gt.shape[0])
             feature=(make_confidence_input(base,candidate,lr,index,anchors)
                      if architecture=='confidence' else make_input(base,candidate,index,anchors))
             for _ in range(per_frame):
@@ -137,6 +149,7 @@ def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_
                 observations.append(lr[y//2:(y+patch)//2,x//2:(x+patch)//2])
         index+=1
     [cap.release() for cap in caps]
+    if base_cap:base_cap.release()
     return PatchDataset(inputs,targets,observations)
 
 
@@ -152,8 +165,8 @@ def device_for(name):
 
 def train(args):
     torch.manual_seed(7);random.seed(7);device=device_for(args.device)
-    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture)
-    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture)
+    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture,args.train_base)
+    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture,args.val_base)
     loader=DataLoader(trainset,batch_size=args.batch_size,shuffle=True,num_workers=0);vloader=DataLoader(valset,batch_size=args.batch_size,shuffle=False,num_workers=0)
     model=build_model(args.architecture,args.width,args.blocks).to(device);optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4)
     best=float('inf')
@@ -202,6 +215,8 @@ def tiled(model,feature,device,tile,overlap):
 def infer(args):
     device=device_for(args.device);checkpoint=torch.load(args.model,map_location=device,weights_only=True);model=build_model(checkpoint.get('architecture','legacy'),checkpoint['width'],checkpoint['blocks']).to(device);model.load_state_dict(checkpoint['state']);model.eval()
     anchors=sorted(json.loads(Path(args.anchors).read_text())['anchor_indices']);aset=set(anchors);candidate=cv2.VideoCapture(args.candidate);lr=cv2.VideoCapture(args.low_resolution)
+    base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
+    if args.base_video and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {args.base_video}')
     n=int(candidate.get(cv2.CAP_PROP_FRAME_COUNT));n=min(n,args.max_frames) if args.max_frames else n;w=int(candidate.get(cv2.CAP_PROP_FRAME_WIDTH));h=int(candidate.get(cv2.CAP_PROP_FRAME_HEIGHT));fps=candidate.get(cv2.CAP_PROP_FPS);writer=cv2.VideoWriter(args.output,cv2.VideoWriter_fourcc(*'FFV1'),fps,(w,h))
     if args.tile<=0 and args.infer_batch_size>1:
         for start in range(0,n,args.infer_batch_size):
@@ -211,7 +226,7 @@ def infer(args):
                 if not(ok and okl):raise RuntimeError(index)
                 records.append(c)
                 if index not in aset:
-                    base=cv2.resize(l,(w,h),interpolation=cv2.INTER_CUBIC)
+                    base=read_base_frame(base_cap,l,index,w,h)
                     feature=(make_confidence_input(base,c,l,index,anchors)
                              if checkpoint.get('architecture')=='confidence' else make_input(base,c,index,anchors))
                     features.append(feature);slots.append(index-start)
@@ -221,17 +236,20 @@ def infer(args):
                 for slot,out in zip(slots,batch):records[slot]=np.clip(out*255,0,255).astype(np.uint8)
             for offset,frame in enumerate(records):
                 writer.write(frame);print(f'[{start+offset+1}/{n}]')
-        candidate.release();lr.release();writer.release();return
+        candidate.release();lr.release();writer.release()
+        if base_cap:base_cap.release()
+        return
     for index in range(n):
         ok,c=candidate.read();okl,l=lr.read()
         if not(ok and okl):raise RuntimeError(index)
         if index not in aset:
-            base=cv2.resize(l,(w,h),interpolation=cv2.INTER_CUBIC)
+            base=read_base_frame(base_cap,l,index,w,h)
             feature=(make_confidence_input(base,c,l,index,anchors)
                      if checkpoint.get('architecture')=='confidence' else make_input(base,c,index,anchors))
             c=tiled(model,feature,device,args.tile,args.overlap)
         writer.write(c);print(f'[{index+1}/{n}]')
     candidate.release();lr.release();writer.release()
+    if base_cap:base_cap.release()
 
 
 def main():
@@ -239,8 +257,9 @@ def main():
     t=sub.add_parser('train')
     for prefix in ('train','val'):
         for name in ('gt','lr','candidate','anchors'):t.add_argument(f'--{prefix}-{name}',required=True)
+        t.add_argument(f'--{prefix}-base',help='Optional HR-size SR/base-prior video for modern-base training.')
     t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
-    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
+    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
     args=p.parse_args();train(args) if args.command=='train' else infer(args)
 
 

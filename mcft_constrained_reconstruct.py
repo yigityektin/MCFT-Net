@@ -198,10 +198,20 @@ def read_at(cap, i):
     return f
 
 
+def read_base_frame(base_cap, lr_frame, index, width, height):
+    if base_cap is None:
+        return cv2.resize(lr_frame, (width, height), interpolation=cv2.INTER_CUBIC)
+    base = read_at(base_cap, index)
+    if base.shape[1] != width or base.shape[0] != height:
+        base = cv2.resize(base, (width, height), interpolation=cv2.INTER_CUBIC)
+    return base
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--ground-truth',required=True); p.add_argument('--anchors',required=True)
     p.add_argument('--low-resolution', help='Actual LR video. If omitted, LR is simulated losslessly from ground truth.')
+    p.add_argument('--base-video', help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.')
     p.add_argument('--output-video', help='Write a complete MCFT video (anchors are copied from ground truth).')
     p.add_argument('--save-frames', action='store_true', help='Save lossless GT/bicubic/MCFT PNG triplets.')
     p.add_argument('--output-dir',default='constrained_mcft'); p.add_argument('--stride',type=int,default=10)
@@ -219,10 +229,19 @@ def main():
     degradation=json.loads(Path(args.degradation_model).read_text()) if args.degradation_model else None
     cap=cv2.VideoCapture(args.ground_truth); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); aset=set(anchors)
     lr_cap=cv2.VideoCapture(args.low_resolution) if args.low_resolution else None
+    base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
+    if args.base_video and not base_cap.isOpened(): raise RuntimeError(f'Could not open base video {args.base_video}')
     fps=cap.get(cv2.CAP_PROP_FPS); H=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     # Anchors are reused many times; cache them once instead of repeatedly seeking
     # through the compressed source video.
     anchor_cache={index:read_at(cap,index) for index in anchors}
+    anchor_base_cache={}
+    if base_cap is not None:
+        for index in anchors:
+            base = read_at(base_cap, index)
+            if base.shape[1] != W or base.shape[0] != H:
+                base = cv2.resize(base, (W, H), interpolation=cv2.INTER_CUBIC)
+            anchor_base_cache[index] = base
     writer=None
     if args.output_video:
         codec='FFV1' if Path(args.output_video).suffix.lower() in {'.mkv','.avi'} else 'mp4v'
@@ -241,7 +260,7 @@ def main():
             print(f'[{k+1}/{len(targets)}] frame {i} anchor')
             continue
         observed=read_at(lr_cap,i) if lr_cap else cv2.resize(gt,(W//2,H//2),interpolation=cv2.INTER_AREA)
-        base=cv2.resize(observed,(W,H),interpolation=cv2.INTER_CUBIC)
+        base=read_base_frame(base_cap, observed, i, W, H)
         tg=cv2.cvtColor(observed,cv2.COLOR_BGR2GRAY); by=cv2.cvtColor(base,cv2.COLOR_BGR2YCrCb)[...,0].astype(np.float32)
         pos=np.searchsorted(anchors,i); near=anchors[max(0,pos-1):min(len(anchors),pos+1)]
         gradx_sum=np.zeros_like(by); grady_sum=np.zeros_like(by); weight_sum=np.zeros_like(by)
@@ -261,7 +280,9 @@ def main():
             else: refined,rc=local_subpixel_refine(by,warped,confh)
             wgt=rc*np.exp(-abs(i-aidx)/7.0)
             if args.gradient_source=='residual-multiscale':
-                anchor_base=cv2.resize(alr,(W,H),interpolation=cv2.INTER_CUBIC)
+                anchor_base=anchor_base_cache.get(aidx)
+                if anchor_base is None:
+                    anchor_base=cv2.resize(alr,(W,H),interpolation=cv2.INTER_CUBIC)
                 anchor_base_y=cv2.cvtColor(anchor_base,cv2.COLOR_BGR2YCrCb)[...,0].astype(np.float32)
                 residual=ay-anchor_base_y
                 warped_residual=remap_with_displacement(residual,flowh,cv2.BORDER_REFLECT101,cv2.INTER_CUBIC)
@@ -311,6 +332,7 @@ def main():
         print(f'[{k+1}/{len(targets)}] frame {i}')
     cap.release()
     if lr_cap: lr_cap.release()
+    if base_cap: base_cap.release()
     if writer: writer.release()
     with (out/'metrics.csv').open('w',newline='') as f:
         wr=csv.DictWriter(f,fieldnames=rows[0]);wr.writeheader();wr.writerows(rows)
