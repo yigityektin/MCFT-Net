@@ -151,6 +151,26 @@ def train(args):
     pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base)
     validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,0,'confidence',args.val_base)
     optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4);best=math.inf
+    if args.pairs_only_steps:
+        reds_loader=DataLoader(pairs,batch_size=args.batch_size,shuffle=True,num_workers=0);reds_iter=iter(reds_loader)
+        model.train();running=[]
+        for step in range(1,args.pairs_only_steps+1):
+            try:reds_batch=next(reds_iter)
+            except StopIteration:reds_iter=iter(reds_loader);reds_batch=next(reds_iter)
+            running.append(optimize_pair(model,teacher,optimizer,reds_batch,reference,args,device))
+            if args.log_every and step%args.log_every==0:
+                print('pairs-only step',step,'train',np.mean(running[-args.log_every:]),flush=True)
+            if args.val_every and step%args.val_every==0:
+                score=validate(model,validation,args.batch_size,device)
+                print('pairs-only step',step,'val_l1',score,flush=True)
+                if score<best:
+                    best=score;torch.save({'state':model.state_dict(),'width':checkpoint['width'],'blocks':checkpoint['blocks'],'architecture':'confidence','val_l1':best,'training':'pairs_only_temporal','teacher':args.init,'pairs_only_steps':step},args.output)
+                model.train()
+        if math.isinf(best):
+            best=validate(model,validation,args.batch_size,device)
+            torch.save({'state':model.state_dict(),'width':checkpoint['width'],'blocks':checkpoint['blocks'],'architecture':'confidence','val_l1':best,'training':'pairs_only_temporal','teacher':args.init,'pairs_only_steps':args.pairs_only_steps},args.output)
+        print('pairs-only train',np.mean(running),'best_val_l1',best,flush=True)
+        return
     for epoch in range(args.epochs):
         reds_loader=DataLoader(pairs,batch_size=args.batch_size,shuffle=True,num_workers=0);reds_iter=iter(reds_loader)
         vimeo=VimeoMCFTStream('train',args.vimeo_triplets,args.vimeo_patches_per_triplet,args.patch,args.seed+epoch,args.shuffle_buffer,args.flow_method,args.proposal_strength)
@@ -173,6 +193,8 @@ def main():
     p.add_argument('--reds-base',help='Optional HR-size modern SR/base-prior video for REDS replay.')
     p.add_argument('--val-base',help='Optional HR-size modern SR/base-prior video for validation.')
     p.add_argument('--epochs',type=int,default=1);p.add_argument('--vimeo-triplets',type=int,default=100);p.add_argument('--vimeo-patches-per-triplet',type=int,default=2);p.add_argument('--reds-patches-per-pair',type=int,default=2);p.add_argument('--reds-steps-per-vimeo',type=int,default=3)
+    p.add_argument('--pairs-only-steps',type=int,default=0,help='Run a fixed number of REDS/BBB adjacent-pair temporal updates and skip Vimeo streaming.')
+    p.add_argument('--val-every',type=int,default=100,help='Validation interval for --pairs-only-steps.')
     p.add_argument('--patch',type=int,default=96);p.add_argument('--batch-size',type=int,default=8);p.add_argument('--val-patches-per-frame',type=int,default=4);p.add_argument('--max-reds-frames',type=int,default=0)
     p.add_argument('--lr',type=float,default=5e-5);p.add_argument('--distill-weight',type=float,default=0.10);p.add_argument('--edge-weight',type=float,default=0.05);p.add_argument('--ssim-weight',type=float,default=0.05);p.add_argument('--gradient-weight',type=float,default=0.15);p.add_argument('--texture-weight',type=float,default=0.0);p.add_argument('--temporal-weight',type=float,default=0.10);p.add_argument('--l2sp-weight',type=float,default=0.01)
     p.add_argument('--shuffle-buffer',type=int,default=16);p.add_argument('--flow-method',choices=('farneback','dis'),default='dis');p.add_argument('--proposal-strength',type=float,default=0.5);p.add_argument('--log-every',type=int,default=8);p.add_argument('--seed',type=int,default=7);p.add_argument('--device',default='auto')
