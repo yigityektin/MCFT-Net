@@ -224,6 +224,51 @@ than anchor transitions or object-boundary failures.
 
 ## Frozen Benchmark Result
 
+The earlier BBB/REDS development table below is retained as a historical
+ablation. The current reproducible REDS generalization checkpoint is evaluated
+with the three saved reports in the repository root:
+
+```text
+mcft_net_reds_general_018.pth
+```
+
+Its non-anchor results are:
+
+| Clip | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
+|---|---:|---:|---:|---:|
+| REDS011 | 28.4670 | 0.90814 | 27.198 | 8.5993 |
+| REDS015 | 30.4004 | 0.92364 | 22.192 | 6.9596 |
+| REDS018 | 29.4905 | 0.90355 | 27.225 | 8.2320 |
+| **Average** | **29.4527** | **0.91178** | **25.538** | **7.9303** |
+
+Only non-anchor rows should be used for claims about reconstruction quality:
+anchor frames are true HR observations and therefore inflate full-video scores.
+The current REDS run uses the deterministic MCFT candidate as its base; it is
+not yet a comparison against a validated modern SR base such as Real-ESRGAN or
+SwinIR.
+
+### Reproducing the REDS aggregate
+
+After running `evaluate_against_ground_truth.py` for each clip, aggregate the
+reports without loading any video into memory:
+
+```bash
+python aggregate_reds_quality.py \
+  --input 011=reds_011_general_quality.csv \
+          015=reds_015_general_quality.csv \
+          018=reds_018_general_quality.csv \
+  --output reds_general_aggregate_quality.csv
+```
+
+### True multi-clip training
+
+`mcft_mixed_replay.py` supports a JSON manifest so clips are sampled in one
+training run instead of being fine-tuned sequentially. Start from
+`reds_multiclip_manifest.example.json`, replace paths as needed, and pass it as
+both `--reds-manifest` and `--val-manifest`. Optional `base` fields point to a
+modern HR-size base video and must be present during both training and
+validation if used.
+
 The benchmark protocol used during development was:
 
 ```text

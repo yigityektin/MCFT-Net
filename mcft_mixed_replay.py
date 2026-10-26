@@ -4,7 +4,7 @@ import argparse,json,math,os,random,sys
 from pathlib import Path
 import cv2,numpy as np,torch
 from torch import nn
-from torch.utils.data import DataLoader,Dataset
+from torch.utils.data import ConcatDataset,DataLoader,Dataset
 from mcft_net import build_model,collect,device_for,gradient_loss,make_confidence_input,read_base_frame
 from mcft_hf_stream import VimeoMCFTStream
 
@@ -51,6 +51,35 @@ def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed
     if base_cap:base_cap.release()
     if not items:raise RuntimeError('No adjacent non-anchor REDS pairs were collected')
     return PairDataset(items)
+
+
+def read_clip_manifest(path):
+    """Read a JSON list (or {\"clips\": [...]}) of clip path records."""
+    data=json.loads(Path(path).read_text())
+    clips=data.get('clips',data) if isinstance(data,dict) else data
+    if not isinstance(clips,list) or not clips:
+        raise ValueError(f'{path} must contain a non-empty list of clip records')
+    required=('gt','lr','candidate','anchors')
+    for index,clip in enumerate(clips):
+        missing=[key for key in required if key not in clip]
+        if missing: raise ValueError(f'{path} clip {index} missing {missing}')
+    return clips
+
+
+def collect_manifest_pairs(manifest,patch,per_pair,seed,max_frames=0):
+    datasets=[]
+    for index,clip in enumerate(read_clip_manifest(manifest)):
+        datasets.append(collect_pairs(clip['gt'],clip['lr'],clip['candidate'],clip['anchors'],
+                                       patch,per_pair,seed+index,max_frames,clip.get('base')))
+    return datasets[0] if len(datasets)==1 else ConcatDataset(datasets)
+
+
+def collect_manifest_validation(manifest,patch,per_frame,seed,max_frames=0):
+    datasets=[]
+    for index,clip in enumerate(read_clip_manifest(manifest)):
+        datasets.append(collect(clip['gt'],clip['lr'],clip['candidate'],clip['anchors'],patch,
+                                per_frame,seed+index,max_frames,'confidence',clip.get('base')))
+    return datasets[0] if len(datasets)==1 else ConcatDataset(datasets)
 
 
 def laplacian_overshoot(prediction,target):
@@ -148,8 +177,14 @@ def train(args):
     teacher=build_model('confidence',checkpoint['width'],checkpoint['blocks']).to(device);teacher.load_state_dict(checkpoint['state']);teacher.eval()
     for p in teacher.parameters():p.requires_grad_(False)
     reference={name:p.detach().clone() for name,p in model.named_parameters()}
-    pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base)
-    validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,0,'confidence',args.val_base)
+    if args.reds_manifest:
+        pairs=collect_manifest_pairs(args.reds_manifest,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames)
+    else:
+        pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base)
+    if args.val_manifest:
+        validation=collect_manifest_validation(args.val_manifest,args.patch,args.val_patches_per_frame,19,args.max_val_frames)
+    else:
+        validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,'confidence',args.val_base)
     optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4);best=math.inf
     if args.pairs_only_steps:
         reds_loader=DataLoader(pairs,batch_size=args.batch_size,shuffle=True,num_workers=0);reds_iter=iter(reds_loader)
@@ -189,16 +224,25 @@ def train(args):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    for name in ('init','output','reds-gt','reds-lr','reds-candidate','reds-anchors','val-gt','val-lr','val-candidate','val-anchors'):p.add_argument('--'+name,required=True)
+    p.add_argument('--init',required=True);p.add_argument('--output',required=True)
+    p.add_argument('--reds-gt');p.add_argument('--reds-lr');p.add_argument('--reds-candidate');p.add_argument('--reds-anchors')
+    p.add_argument('--val-gt');p.add_argument('--val-lr');p.add_argument('--val-candidate');p.add_argument('--val-anchors')
+    p.add_argument('--reds-manifest',help='JSON list of training clip records for joint multi-clip training.')
+    p.add_argument('--val-manifest',help='JSON list of validation clip records for joint validation.')
     p.add_argument('--reds-base',help='Optional HR-size modern SR/base-prior video for REDS replay.')
     p.add_argument('--val-base',help='Optional HR-size modern SR/base-prior video for validation.')
     p.add_argument('--epochs',type=int,default=1);p.add_argument('--vimeo-triplets',type=int,default=100);p.add_argument('--vimeo-patches-per-triplet',type=int,default=2);p.add_argument('--reds-patches-per-pair',type=int,default=2);p.add_argument('--reds-steps-per-vimeo',type=int,default=3)
     p.add_argument('--pairs-only-steps',type=int,default=0,help='Run a fixed number of REDS/BBB adjacent-pair temporal updates and skip Vimeo streaming.')
     p.add_argument('--val-every',type=int,default=100,help='Validation interval for --pairs-only-steps.')
-    p.add_argument('--patch',type=int,default=96);p.add_argument('--batch-size',type=int,default=8);p.add_argument('--val-patches-per-frame',type=int,default=4);p.add_argument('--max-reds-frames',type=int,default=0)
+    p.add_argument('--patch',type=int,default=96);p.add_argument('--batch-size',type=int,default=8);p.add_argument('--val-patches-per-frame',type=int,default=4);p.add_argument('--max-reds-frames',type=int,default=0);p.add_argument('--max-val-frames',type=int,default=0)
     p.add_argument('--lr',type=float,default=5e-5);p.add_argument('--distill-weight',type=float,default=0.10);p.add_argument('--edge-weight',type=float,default=0.05);p.add_argument('--ssim-weight',type=float,default=0.05);p.add_argument('--gradient-weight',type=float,default=0.15);p.add_argument('--texture-weight',type=float,default=0.0);p.add_argument('--temporal-weight',type=float,default=0.10);p.add_argument('--l2sp-weight',type=float,default=0.01)
     p.add_argument('--shuffle-buffer',type=int,default=16);p.add_argument('--flow-method',choices=('farneback','dis'),default='dis');p.add_argument('--proposal-strength',type=float,default=0.5);p.add_argument('--log-every',type=int,default=8);p.add_argument('--seed',type=int,default=7);p.add_argument('--device',default='auto')
-    train(p.parse_args())
+    args=p.parse_args()
+    if not args.reds_manifest and not all((args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors)):
+        p.error('provide --reds-manifest or all four REDS training paths')
+    if not args.val_manifest and not all((args.val_gt,args.val_lr,args.val_candidate,args.val_anchors)):
+        p.error('provide --val-manifest or all four validation paths')
+    train(args)
 
 
 if __name__=='__main__':
