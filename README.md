@@ -1,3 +1,13 @@
+---
+library_name: pytorch
+license: mit
+tags:
+  - video-super-resolution
+  - image-restoration
+  - computer-vision
+  - optical-flow
+---
+
 # MCFT: Motion-Compensated Frequency Transfer
 
 MCFT is a sparse-reference video super-resolution project. The input is a
@@ -263,6 +273,12 @@ python aggregate_reds_quality.py \
           015=reds_015_general_quality.csv \
           018=reds_018_general_quality.csv \
   --output reds_general_aggregate_quality.csv
+```
+
+Inspect a saved checkpoint without running inference:
+
+```bash
+python inspect_mcft_checkpoint.py mcft_net_reds_manifest_joint.pth
 ```
 
 ### True multi-clip training
