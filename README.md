@@ -232,20 +232,25 @@ with the three saved reports in the repository root:
 mcft_net_reds_general_018.pth
 ```
 
-Its non-anchor results are:
+Its non-anchor results across six REDS validation clips are:
 
 | Clip | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
 |---|---:|---:|---:|---:|
-| REDS011 | 28.4670 | 0.90814 | 27.198 | 8.5993 |
-| REDS015 | 30.4004 | 0.92364 | 22.192 | 6.9596 |
-| REDS018 | 29.4905 | 0.90355 | 27.225 | 8.2320 |
-| **Average** | **29.4527** | **0.91178** | **25.538** | **7.9303** |
+| REDS001 | 33.7920 | 0.94061 | 14.750 | 4.5043 |
+| REDS006 | 34.9745 | 0.95117 | 12.479 | 3.9388 |
+| REDS011 | 28.8048 | 0.91589 | 25.866 | 8.2271 |
+| REDS015 | 30.8894 | 0.93055 | 20.507 | 6.5268 |
+| REDS017 | 30.8774 | 0.93843 | 22.258 | 6.0622 |
+| REDS018 | 29.5899 | 0.90745 | 26.482 | 8.0773 |
+| **Average** | **31.4880** | **0.93069** | **20.390** | **6.2228** |
 
 Only non-anchor rows should be used for claims about reconstruction quality:
 anchor frames are true HR observations and therefore inflate full-video scores.
 The current REDS run uses the deterministic MCFT candidate as its base; it is
 not yet a comparison against a validated modern SR base such as Real-ESRGAN or
-SwinIR.
+SwinIR. In development, pretrained Real-ESRGAN and an HAT fine-tune were
+evaluated as negative controls and rejected because they were mismatched to the
+paired REDS degradation. They must not be presented as successful MCFT bases.
 
 ### Reproducing the REDS aggregate
 
