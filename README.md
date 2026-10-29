@@ -237,24 +237,24 @@ than anchor transitions or object-boundary failures.
 The current reproducible REDS generalization checkpoint is:
 
 ```text
-mcft_net_reds_constrained_generalized.pth
+mcft_net_reds_budget_robust.pth
 ```
 
-The weights are hosted in the Hugging Face repository under
-`checkpoints/mcft_net_reds_constrained_generalized.pth`; they are not committed
-to Git because model binaries are generated artifacts.
+The weights belong in the Hugging Face repository under
+`checkpoints/mcft_net_reds_budget_robust.pth`; they are not committed to Git
+because model binaries are generated artifacts.
 
 Its non-anchor results across six REDS validation clips are:
 
 | Clip | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
 |---|---:|---:|---:|---:|
-| REDS001 | 34.4578 | 0.94878 | 13.229 | 4.1560 |
-| REDS006 | 35.7071 | 0.95740 | 11.170 | 3.6215 |
-| REDS011 | 29.4501 | 0.92676 | 23.290 | 7.5953 |
-| REDS015 | 31.5703 | 0.94015 | 18.360 | 6.0152 |
-| REDS017 (held out) | 31.2637 | 0.94333 | 20.825 | 5.7569 |
-| REDS018 | 30.0517 | 0.91700 | 24.509 | 7.5679 |
-| **Average** | **32.0835** | **0.93890** | **18.564** | **5.7855** |
+| REDS001 | 34.2925 | 0.94625 | 13.538 | 4.2576 |
+| REDS006 | 35.7973 | 0.95832 | 10.916 | 3.5461 |
+| REDS011 | 29.3520 | 0.92459 | 23.501 | 7.6610 |
+| REDS015 | 31.2205 | 0.93431 | 19.243 | 6.3304 |
+| REDS017 (held out) | 31.2166 | 0.94107 | 21.138 | 5.8687 |
+| REDS018 | 30.0883 | 0.91711 | 24.406 | 7.5271 |
+| **Average** | **31.9945** | **0.93694** | **18.790** | **5.8652** |
 
 Only non-anchor rows should be used for claims about reconstruction quality:
 anchor frames are true HR observations and therefore inflate full-video scores.
@@ -342,6 +342,43 @@ external_benchmarks/REDS-Val4/mcft_best_texture_summary.md
 ```
 
 These files are generated artifacts and are ignored by git.
+
+## External Baseline Comparison Protocol
+
+External comparisons must use the same protocol as MCFT: identical REDS clips,
+x2 degradation, resolution, frame count, color conversion, and metric crop.
+Because anchors are true HR observations, report non-anchor metrics separately
+from full-video metrics. A no-anchor VSR result must not be compared directly
+with a 10% anchor result without labeling the protocol.
+
+Use three tracks:
+
+```text
+sparse-anchor:  LR + 5/10/20% HR anchors
+standard VSR:   LR only, no anchors
+modern-base:    external SR base + MCFT refinement
+```
+
+For every track, record:
+
+```text
+Y-PSNR, Y-SSIM, Edge-MAE, Temporal-delta-MAE,
+parameter count, peak memory, and inference time
+```
+
+The intended baseline table is:
+
+| Method | Track | Anchors | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-MAE | Params | Runtime |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Bicubic | sparse-anchor | 10% | — | — | — | — | — | — |
+| Deterministic MCFT | sparse-anchor | 10% | — | — | — | — | — | — |
+| MCFT-Net | sparse-anchor | 10% | — | — | — | — | — | — |
+| EDVR / BasicVSR++ / VRT | standard VSR | 0% | — | — | — | — | — | — |
+| HAT or matched modern base | modern-base | 0% | — | — | — | — | — | — |
+
+The external-model rows remain intentionally blank until they are evaluated
+under the matched degradation; importing published numbers from different
+protocols would not be a fair comparison.
 
 ## BBB Demo-Domain Check
 
