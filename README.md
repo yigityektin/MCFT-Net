@@ -234,25 +234,27 @@ than anchor transitions or object-boundary failures.
 
 ## Frozen Benchmark Result
 
-The earlier BBB/REDS development table below is retained as a historical
-ablation. The current reproducible REDS generalization checkpoint is evaluated
-with the three saved reports in the repository root:
+The current reproducible REDS generalization checkpoint is:
 
 ```text
-mcft_net_reds_general_018.pth
+mcft_net_reds_constrained_generalized.pth
 ```
+
+The weights are hosted in the Hugging Face repository under
+`checkpoints/mcft_net_reds_constrained_generalized.pth`; they are not committed
+to Git because model binaries are generated artifacts.
 
 Its non-anchor results across six REDS validation clips are:
 
 | Clip | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
 |---|---:|---:|---:|---:|
-| REDS001 | 33.7920 | 0.94061 | 14.750 | 4.5043 |
-| REDS006 | 34.9745 | 0.95117 | 12.479 | 3.9388 |
-| REDS011 | 28.8048 | 0.91589 | 25.866 | 8.2271 |
-| REDS015 | 30.8894 | 0.93055 | 20.507 | 6.5268 |
-| REDS017 | 30.8774 | 0.93843 | 22.258 | 6.0622 |
-| REDS018 | 29.5899 | 0.90745 | 26.482 | 8.0773 |
-| **Average** | **31.4880** | **0.93069** | **20.390** | **6.2228** |
+| REDS001 | 34.4578 | 0.94878 | 13.229 | 4.1560 |
+| REDS006 | 35.7071 | 0.95740 | 11.170 | 3.6215 |
+| REDS011 | 29.4501 | 0.92676 | 23.290 | 7.5953 |
+| REDS015 | 31.5703 | 0.94015 | 18.360 | 6.0152 |
+| REDS017 (held out) | 31.2637 | 0.94333 | 20.825 | 5.7569 |
+| REDS018 | 30.0517 | 0.91700 | 24.509 | 7.5679 |
+| **Average** | **32.0835** | **0.93890** | **18.564** | **5.7855** |
 
 Only non-anchor rows should be used for claims about reconstruction quality:
 anchor frames are true HR observations and therefore inflate full-video scores.
@@ -269,10 +271,13 @@ reports without loading any video into memory:
 
 ```bash
 python aggregate_reds_quality.py \
-  --input 011=reds_011_general_quality.csv \
-          015=reds_015_general_quality.csv \
-          018=reds_018_general_quality.csv \
-  --output reds_general_aggregate_quality.csv
+  --input 001=reds_001_generalized_only_quality.csv \
+          006=reds_006_generalized_only_quality.csv \
+          011=reds_011_generalized_only_quality.csv \
+          015=reds_015_generalized_only_quality.csv \
+          017=reds_017_generalized_only_quality.csv \
+          018=reds_018_generalized_only_quality.csv \
+  --output reds_six_clip_generalized_quality.csv
 ```
 
 Inspect a saved checkpoint without running inference:
@@ -302,7 +307,8 @@ inference strength: 1.0
 metrics: Y-channel PSNR/SSIM, Edge-MAE, Temporal-delta-MAE
 ```
 
-Expanded frozen multi-clip non-anchor average:
+Historical BBB/REDS development ablation (not the current generalized
+checkpoint):
 
 | Method | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
 |---|---:|---:|---:|---:|
