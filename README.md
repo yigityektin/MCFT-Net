@@ -270,6 +270,7 @@ reports without loading any video into memory:
 
 ```bash
 python aggregate_reds_quality.py \
+  --method budget_robust \
   --input 001=reds_001_generalized_only_quality.csv \
           006=reds_006_generalized_only_quality.csv \
           011=reds_011_generalized_only_quality.csv \

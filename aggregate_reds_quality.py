@@ -8,12 +8,15 @@ from pathlib import Path
 METRICS = ("psnr_y", "ssim_y", "edge_mae", "temporal_delta_mae")
 
 
-def read(path: Path, label: str):
+def read(path: Path, label: str, method: str | None = None):
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     rows = [row for row in rows if row.get("is_anchor") == "0"]
+    if method is not None:
+        rows = [row for row in rows if row.get("method") == method]
     if not rows:
-        raise ValueError(f"no non-anchor rows in {path}")
+        suffix = f" for method {method!r}" if method else ""
+        raise ValueError(f"no non-anchor rows in {path}{suffix}")
     result = {"clip": label, "frames": len(rows)}
     for metric in METRICS:
         values = []
@@ -28,6 +31,10 @@ def read(path: Path, label: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", nargs="+", required=True, metavar="CLIP=CSV")
+    parser.add_argument(
+        "--method",
+        help="filter rows to one method (required for multi-method CSV files)",
+    )
     parser.add_argument("--output", type=Path, default=Path("reds_aggregate_quality.csv"))
     args = parser.parse_args()
     rows = []
@@ -35,7 +42,7 @@ def main() -> None:
         if "=" not in item:
             parser.error(f"expected CLIP=CSV, got {item!r}")
         label, filename = item.split("=", 1)
-        rows.append(read(Path(filename), label))
+        rows.append(read(Path(filename), label, args.method))
     average = {"clip": "AVERAGE", "frames": sum(row["frames"] for row in rows)}
     for metric in METRICS:
         average[metric] = sum(row[metric] * row["frames"] for row in rows) / average["frames"]
