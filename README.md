@@ -248,21 +248,20 @@ Its non-anchor results across six REDS validation clips are:
 
 | Clip | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
 |---|---:|---:|---:|---:|
-| REDS001 | 34.2925 | 0.94625 | 13.538 | 4.2576 |
-| REDS006 | 35.7973 | 0.95832 | 10.916 | 3.5461 |
-| REDS011 | 29.3520 | 0.92459 | 23.501 | 7.6610 |
-| REDS015 | 31.2205 | 0.93431 | 19.243 | 6.3304 |
-| REDS017 (held out) | 31.2166 | 0.94107 | 21.138 | 5.8687 |
-| REDS018 | 30.0883 | 0.91711 | 24.406 | 7.5271 |
-| **Average** | **31.9945** | **0.93694** | **18.790** | **5.8652** |
+| REDS001 | 34.5230 | 0.94952 | 13.098 | 4.1174 |
+| REDS006 | 35.8063 | 0.95823 | 11.008 | 3.5774 |
+| REDS011 | 29.5159 | 0.92795 | 23.010 | 7.5225 |
+| REDS015 | 31.6264 | 0.94099 | 18.191 | 5.9678 |
+| REDS017 (held out) | 31.3408 | 0.94429 | 20.577 | 5.7075 |
+| REDS018 | 30.1316 | 0.91839 | 24.236 | 7.4961 |
+| **Average** | **32.1573** | **0.93990** | **18.353** | **5.7315** |
 
 Only non-anchor rows should be used for claims about reconstruction quality:
 anchor frames are true HR observations and therefore inflate full-video scores.
-The current REDS run uses the deterministic MCFT candidate as its base; it is
-not yet a comparison against a validated modern SR base such as Real-ESRGAN or
-SwinIR. In development, pretrained Real-ESRGAN and an HAT fine-tune were
-evaluated as negative controls and rejected because they were mismatched to the
-paired REDS degradation. They must not be presented as successful MCFT bases.
+The current REDS run uses the deterministic MCFT candidate as its base. In
+development, pretrained Real-ESRGAN and HAT checkpoints were evaluated as
+negative controls and rejected because they were mismatched to the paired REDS
+degradation. They must not be presented as matched modern-baseline results.
 
 ### Reproducing the REDS aggregate
 
