@@ -284,6 +284,31 @@ constrained candidate, and +4.35 dB for Real-ESRGAN. Real-ESRGAN uses a
 backbone-adapted MCFT checkpoint; applying the bicubic/constrained checkpoint
 without adaptation is intentionally not treated as a valid comparison.
 
+### Real-ESRGAN anchor-budget sweep
+
+On the same four held-out clips, the Real-ESRGAN backbone experiment remains
+positive across the tested anchor budgets:
+
+| True-HR anchors | Real-ESRGAN + MCFT PSNR gain | SSIM gain | Edge-MAE change | Temporal-MAE change |
+|---:|---:|---:|---:|---:|
+| 5% | +4.2514 dB | +0.067014 | -9.3218 | -2.8321 |
+| 10% | +4.3484 dB | +0.068599 | -9.5317 | -2.7961 |
+| 20% | +4.3588 dB | +0.068288 | -9.4862 | -2.5836 |
+
+### Final loss ablation
+
+The final checkpoint was selected with a fair 5,000-step comparison on the
+same backbone-diverse training and validation manifests:
+
+| Recipe | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-MAE |
+|---|---:|---:|---:|---:|
+| Full control | **33.4222** | 0.946357 | **14.7726** | **4.6024** |
+| No temporal loss | 33.3991 | **0.946404** | 14.7957 | 4.6159 |
+| No edge/gradient loss | 33.4029 | 0.946314 | 14.7768 | 4.6174 |
+
+The full recipe is retained because it gives the best PSNR, edge fidelity, and
+temporal consistency; the SSIM difference is negligible.
+
 ### Reproducing the REDS aggregate
 
 After running `evaluate_against_ground_truth.py` for each clip, aggregate the
