@@ -514,6 +514,22 @@ HR candidate, and MCFT uses the sparse true-HR anchors plus the LR observation
 to make a constrained residual correction. On 12 held-out REDS-style clips,
 using Real-ESRGAN as the backbone and evaluating only non-anchor frames:
 
+MCFT is therefore an integration layer or plug-in, not a replacement for the
+backbone. The supported deployment pattern is:
+
+```text
+LR video -> any x2 SR backbone -> HR candidate
+         -> MCFT with sparse HR anchors and LR observation
+         -> corrected HR video
+```
+
+Real-ESRGAN is the backbone validated in the main model-agnostic experiment.
+HAT, EDVR, BasicVSR++, SwinIR, or another x2 SR model can be used as the
+candidate generator through the same interface, but the MCFT-Net refinement
+checkpoint should be fine-tuned on candidates from that backbone family. A
+checkpoint trained on bicubic or Real-ESRGAN candidates must not be assumed to
+transfer unchanged to a different backbone.
+
 | Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
 |---|---:|---:|---:|---:|
 | Real-ESRGAN | 28.0289 | 0.848617 | 28.4973 | 8.3969 |
