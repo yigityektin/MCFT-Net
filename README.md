@@ -570,6 +570,41 @@ exploratory mixed-protocol generalization result, not a single strict
 uniform-anchor aggregate. Per-clip results and the aggregate summary are in
 `benchmarks/reds_final_12clip_summary.csv`.
 
+### Anchor-causality and anchor-budget experiments
+
+On eight fresh REDS clips (`007, 008, 009, 010, 012, 013, 014, 016`), all
+methods were evaluated on the same 81 non-anchor frames (the union of the
+0%, 10%, and shifted-anchor masks):
+
+| Candidate condition | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 31.1622 | 0.919415 | 21.4263 | 6.1256 |
+| MCFT, no anchors | 31.7242 | 0.926635 | 19.1692 | 5.5928 |
+| MCFT, correct 10% anchors | 32.1368 | 0.931855 | 18.4193 | 5.2689 |
+| MCFT, shifted 10% anchors | 32.1376 | 0.931865 | 18.4172 | 5.2728 |
+
+Relative to no anchors, correct anchors add `+0.4127 dB` and `+0.00522`
+SSIM, while reducing temporal-delta-MAE by `0.3239`. The shifted condition
+is nearly identical in this protocol; therefore this experiment supports the
+value of sparse HR evidence but does not claim strong dependence on exact
+anchor timestamps.
+
+The anchor-budget sweep uses the same common-frame evaluation mask:
+
+| Anchor budget | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---:|---:|---:|---:|---:|
+| 0% | 31.7322 | 0.926777 | 19.1514 | 5.5974 |
+| 5% | 32.0410 | 0.930465 | 18.6344 | 5.4074 |
+| 10% | 32.1408 | 0.931915 | 18.4127 | 5.2715 |
+| 20% | 32.2079 | 0.932877 | 18.2588 | 5.0342 |
+
+The gain is monotonic with diminishing returns: 0%→5% gives `+0.3088 dB`,
+5%→10% gives `+0.0998 dB`, and 10%→20% gives `+0.0671 dB`. Per-clip raw
+CSVs and 10,000-resample clip-bootstrap intervals are stored in
+`benchmarks/reds_*_e1_final.csv`, `benchmarks/reds_*_e3_anchor_budget.csv`,
+`benchmarks/reds_e1_anchor_causality_bootstrap.csv`, and
+`benchmarks/reds_e3_anchor_budget_bootstrap.csv`.
+
 ### Reproducibility
 
 Download `checkpoints/mcft_net_final.pth` from the Hugging Face model
