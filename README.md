@@ -190,7 +190,7 @@ is generated from the endpoint anchors. This creates examples of:
 LR frame + anchor-derived proposal -> true HR frame
 ```
 
-The final selected model is trained with mixed replay:
+An earlier pretraining experiment used mixed replay:
 
 ```text
 75% REDS replay
@@ -198,8 +198,8 @@ The final selected model is trained with mixed replay:
 500 streamed Vimeo triplets
 ```
 
-This combination gave better generalization than using either REDS-only or
-Vimeo-only adaptation.
+That experiment is retained for reproducibility, but it is not the final
+Real-ESRGAN-backbone checkpoint reported below.
 
 ## Training Losses
 
@@ -232,9 +232,9 @@ The texture-frequency term was added after failure analysis showed that the
 weakest remaining regions were stochastic fine textures such as asphalt, rather
 than anchor transitions or object-boundary failures.
 
-## Frozen Benchmark Result
+## Historical REDS Budget-Robust Result
 
-The current reproducible REDS generalization checkpoint is:
+An earlier REDS generalization checkpoint is:
 
 ```text
 mcft_net_reds_budget_robust.pth
@@ -494,8 +494,8 @@ configuration. Do not commit Hugging Face tokens.
 ## Final MCFT-Net checkpoint
 
 The final model is `mcft_net_final.pth`, selected using a fair 5,000-step
-loss ablation on held-out REDS clips. At 10% anchors, the four-clip
-non-anchor average is:
+loss ablation on held-out REDS clips. Under the strict four-clip
+uniform-anchor protocol, its non-anchor average is:
 
 | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
 |---:|---:|---:|---:|
@@ -503,6 +503,9 @@ non-anchor average is:
 
 The checkpoint is distributed through the project Hugging Face repository;
 the per-clip evaluation CSVs are under `benchmarks/`.
+
+The 12-clip adaptive-anchor extension is reported separately above and should
+not be interpreted as a strict uniform-anchor benchmark.
 
 ### Model-agnostic backbone result
 
@@ -518,9 +521,12 @@ using Real-ESRGAN as the backbone and evaluating only non-anchor frames:
 | Gain | +4.0536 | +0.083867 | -10.5579 | -2.8435 |
 
 The benchmark reports non-anchor frames separately from the sparse reference
-frames; anchor frames are not included in the main averages. The 12 clips are
-held-out REDS-style sequences, with 10% true-HR anchor frames selected by the
-offline evaluation manifest. Per-clip results and the aggregate summary are in
+frames; anchor frames are not included in the main averages. The strict
+uniform-anchor results are the primary protocol. The current 12-clip extension
+contains four clips with uniform anchors and eight clips with offline
+content-adaptive anchors selected from the ground truth; it is therefore an
+exploratory mixed-protocol generalization result, not a single strict
+uniform-anchor aggregate. Per-clip results and the aggregate summary are in
 `benchmarks/reds_final_12clip_summary.csv`.
 
 ### Reproducibility
