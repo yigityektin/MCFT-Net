@@ -491,6 +491,19 @@ configuration. Do not commit Hugging Face tokens.
 
 ## Artifact Policy
 
+## Final MCFT-Net checkpoint
+
+The final model is `mcft_net_final.pth`, selected using a fair 5,000-step
+loss ablation on held-out REDS clips. At 10% anchors, the four-clip
+non-anchor average is:
+
+| PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---:|---:|---:|---:|
+| 33.4222 | 0.946357 | 14.7726 | 4.6024 |
+
+The checkpoint is distributed through the project Hugging Face repository;
+the per-clip evaluation CSVs are under `benchmarks/`.
+
 Generated videos, benchmark folders, model checkpoints, datasets, `.npz`
 caches, CSV outputs, plots, local virtual environments, and vendored external
 model folders are ignored by git.
