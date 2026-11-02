@@ -504,6 +504,45 @@ non-anchor average is:
 The checkpoint is distributed through the project Hugging Face repository;
 the per-clip evaluation CSVs are under `benchmarks/`.
 
+### Model-agnostic backbone result
+
+MCFT is applied after an arbitrary x2 SR backbone: the backbone produces an
+HR candidate, and MCFT uses the sparse true-HR anchors plus the LR observation
+to make a constrained residual correction. On 12 held-out REDS-style clips,
+using Real-ESRGAN as the backbone and evaluating only non-anchor frames:
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Real-ESRGAN | 28.0289 | 0.848617 | 28.4973 | 8.3969 |
+| Real-ESRGAN + MCFT | 32.0825 | 0.932485 | 17.9394 | 5.5534 |
+| Gain | +4.0536 | +0.083867 | -10.5579 | -2.8435 |
+
+The benchmark reports non-anchor frames separately from the sparse reference
+frames; anchor frames are not included in the main averages. The 12 clips are
+held-out REDS-style sequences, with 10% true-HR anchor frames selected by the
+offline evaluation manifest. Per-clip results and the aggregate summary are in
+`benchmarks/reds_final_12clip_summary.csv`.
+
+### Reproducibility
+
+Download `checkpoints/mcft_net_final.pth` from the Hugging Face model
+repository, prepare an LR video, an HR-size backbone candidate, and an anchor
+manifest, then run:
+
+```bash
+python mcft_net.py infer \
+  --model checkpoints/mcft_net_final.pth \
+  --candidate candidate_x2.mkv \
+  --low-resolution lr_x2.mkv \
+  --base-video bicubic_x2.mkv \
+  --anchors anchors_10pct.json \
+  --output mcft_output.mkv \
+  --tile 256 --overlap 32 --device cuda
+```
+
+Evaluation uses `evaluate_against_ground_truth.py`; report the non-anchor row
+for the primary comparison.
+
 Generated videos, benchmark folders, model checkpoints, datasets, `.npz`
 caches, CSV outputs, plots, local virtual environments, and vendored external
 model folders are ignored by git.
