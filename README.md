@@ -258,10 +258,31 @@ Its non-anchor results across six REDS validation clips are:
 
 Only non-anchor rows should be used for claims about reconstruction quality:
 anchor frames are true HR observations and therefore inflate full-video scores.
-The current REDS run uses the deterministic MCFT candidate as its base. In
-development, pretrained Real-ESRGAN and HAT checkpoints were evaluated as
-negative controls and rejected because they were mismatched to the paired REDS
-degradation. They must not be presented as matched modern-baseline results.
+The original REDS run uses the deterministic MCFT candidate as its base. A
+separate candidate-diverse run was then trained on bicubic and constrained
+candidates, and a backbone-diverse run added Real-ESRGAN candidates. These
+results are reported as refinement gains over each candidate, not as a claim
+that MCFT replaces the underlying SR backbone.
+
+### Candidate-diverse held-out result
+
+The following averages are over non-anchor frames from held-out REDS clips
+002, 003, 004, and 005. The same MCFT harness is applied to each candidate
+family at a 10% anchor budget.
+
+| Candidate | PSNR-Y | SSIM-Y | Edge MAE | Temporal MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 32.7454 | 0.93668 | 17.3960 | 5.0073 |
+| Bicubic + MCFT | **33.8377** | **0.94590** | **14.7507** | **4.3658** |
+| Constrained | 33.1863 | 0.94465 | 16.3511 | 4.6212 |
+| Constrained + MCFT | **35.8437** | **0.96396** | **11.3853** | **3.4015** |
+| Real-ESRGAN | 28.9679 | 0.87655 | 24.4375 | 7.4661 |
+| Real-ESRGAN + MCFT | **33.3163** | **0.94514** | **14.9059** | **4.6701** |
+
+The corresponding PSNR gains are +1.09 dB for bicubic, +2.66 dB for the
+constrained candidate, and +4.35 dB for Real-ESRGAN. Real-ESRGAN uses a
+backbone-adapted MCFT checkpoint; applying the bicubic/constrained checkpoint
+without adaptation is intentionally not treated as a valid comparison.
 
 ### Reproducing the REDS aggregate
 
