@@ -561,6 +561,24 @@ transfer unchanged to a different backbone.
 | Real-ESRGAN + MCFT | 32.0825 | 0.932485 | 17.9394 | 5.5534 |
 | Gain | +4.0536 | +0.083867 | -10.5579 | -2.8435 |
 
+An additional six-clip uniform-anchor check used the official SwinIR-M x2
+checkpoint as a deliberately mismatched single-frame backbone. SwinIR alone
+is weak under this REDS degradation, but MCFT still provides a consistent
+correction:
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| SwinIR | 25.0985 | 0.838578 | 44.2254 | 12.6843 |
+| SwinIR + MCFT | 29.0968 | 0.899579 | 25.8192 | 8.3197 |
+| Gain | +3.9983 | +0.061001 | -18.4062 | -4.3646 |
+
+This supports MCFT as a backbone integration layer, but not as a guarantee
+that every pretrained backbone will become competitive with a matched model.
+Conversely, an eight-clip HAT check showed that applying the frozen MCFT
+checkpoint can hurt a strong backbone (33.4402 dB HAT versus 32.2839 dB after
+MCFT); backbone-specific fine-tuning is therefore required before claiming
+transfer to HAT or another modern SR model.
+
 The benchmark reports non-anchor frames separately from the sparse reference
 frames; anchor frames are not included in the main averages. The strict
 uniform-anchor results are the primary protocol. The current 12-clip extension
