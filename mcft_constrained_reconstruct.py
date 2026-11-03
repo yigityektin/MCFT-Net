@@ -212,7 +212,8 @@ def main():
     p.add_argument('--ground-truth',required=True); p.add_argument('--anchors',required=True)
     p.add_argument('--low-resolution', help='Actual LR video. If omitted, LR is simulated losslessly from ground truth.')
     p.add_argument('--base-video', help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.')
-    p.add_argument('--output-video', help='Write a complete MCFT video (anchors are copied from ground truth).')
+    p.add_argument('--output-video', help='Write a complete MCFT video (anchors are copied from the anchor source).')
+    p.add_argument('--anchor-source-video', help='Optional video supplying the HR anchor pixels. Defaults to --ground-truth.')
     p.add_argument('--save-frames', action='store_true', help='Save lossless GT/bicubic/MCFT PNG triplets.')
     p.add_argument('--output-dir',default='constrained_mcft'); p.add_argument('--stride',type=int,default=10)
     p.add_argument('--max-frames',type=int,default=30); p.add_argument('--lambda-gradient',type=float,default=.35)
@@ -228,13 +229,19 @@ def main():
     args=p.parse_args(); manifest=json.loads(Path(args.anchors).read_text()); anchors=sorted(map(int,manifest['anchor_indices']))
     degradation=json.loads(Path(args.degradation_model).read_text()) if args.degradation_model else None
     cap=cv2.VideoCapture(args.ground_truth); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); aset=set(anchors)
+    anchor_source_cap=cv2.VideoCapture(args.anchor_source_video) if args.anchor_source_video else cap
+    if args.anchor_source_video and not anchor_source_cap.isOpened():
+        raise RuntimeError(f'Could not open anchor source video {args.anchor_source_video}')
     lr_cap=cv2.VideoCapture(args.low_resolution) if args.low_resolution else None
     base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
     if args.base_video and not base_cap.isOpened(): raise RuntimeError(f'Could not open base video {args.base_video}')
     fps=cap.get(cv2.CAP_PROP_FPS); H=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     # Anchors are reused many times; cache them once instead of repeatedly seeking
     # through the compressed source video.
-    anchor_cache={index:read_at(cap,index) for index in anchors}
+    anchor_cache={index:read_at(anchor_source_cap,index) for index in anchors}
+    for index, frame in anchor_cache.items():
+        if frame.shape[:2] != (H, W):
+            raise RuntimeError(f'Anchor source frame {index} has shape {frame.shape[:2]}, expected {(H, W)}')
     anchor_base_cache={}
     if base_cap is not None:
         for index in anchors:
@@ -256,7 +263,7 @@ def main():
     for k,i in enumerate(targets):
         gt=read_at(cap,i)
         if i in aset and writer:
-            writer.write(gt)
+            writer.write(anchor_cache[i])
             print(f'[{k+1}/{len(targets)}] frame {i} anchor')
             continue
         observed=read_at(lr_cap,i) if lr_cap else cv2.resize(gt,(W//2,H//2),interpolation=cv2.INTER_AREA)
@@ -331,6 +338,7 @@ def main():
         if writer: writer.write(result)
         print(f'[{k+1}/{len(targets)}] frame {i}')
     cap.release()
+    if args.anchor_source_video: anchor_source_cap.release()
     if lr_cap: lr_cap.release()
     if base_cap: base_cap.release()
     if writer: writer.release()

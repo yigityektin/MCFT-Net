@@ -609,24 +609,26 @@ uniform-anchor aggregate. Per-clip results and the aggregate summary are in
 
 ### Anchor-causality and anchor-budget experiments
 
-On eight fresh REDS clips (`007, 008, 009, 010, 012, 013, 014, 016`), all
-methods were evaluated on the same 81 non-anchor frames (the intersection of
-the 0%, 10%, and shifted-anchor masks):
+The anchor-causality control was first rerun on REDS clip `007` with the
+deterministic reconstruction stage. All conditions use the same target LR,
+base video, and non-anchor evaluation mask:
 
-| Candidate condition | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+| Deterministic candidate condition | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
 |---|---:|---:|---:|---:|
-| Bicubic | 31.1622 | 0.919415 | 21.4263 | 6.1256 |
-| MCFT, no anchors | 31.7242 | 0.926635 | 19.1692 | 5.5928 |
-| MCFT, correct 10% anchors | 32.1368 | 0.931855 | 18.4193 | 5.2689 |
-| MCFT, shifted 10% anchors | 32.1376 | 0.931865 | 18.4172 | 5.2728 |
+| 0% anchors | 31.4566 | 0.931167 | 18.9123 | 5.8827 |
+| Correct same-clip 10% anchors | **32.1514** | **0.939910** | **17.5352** | **5.2855** |
+| Foreign-clip 10% anchors | 31.4549 | 0.931140 | 18.9164 | 11.8254* |
 
-The E1 table uses the `confidence` MCFT-Net checkpoint
-`checkpoints/mcft_net_final.pth`, not deterministic MCFT v3. Relative to no
-anchors, correct anchors add `+0.4127 dB` and `+0.00522`
-SSIM, while reducing temporal-delta-MAE by `0.3239`. The shifted condition
-is nearly identical in this protocol. Because the shifted condition still
-uses true-HR frames from the same clip and no foreign-clip control was run,
-this experiment does not establish timestamp/content causality.
+Correct anchors add `+0.6947 dB` over 0% anchors, while foreign anchors add
+`-0.0017 dB`. This is the valid content-causality result: correct same-clip
+HR evidence helps, whereas an equal number of foreign HR frames does not.
+The learned MCFT refinement applied after these candidates reduces the
+correct-versus-foreign gap to `+0.1160 dB`, so most of the anchor benefit is
+introduced during deterministic candidate construction.
+
+`*` Foreign anchor frames are intentionally from another clip, so the
+temporal-delta metric is not meaningful for that condition and is shown only
+for completeness.
 
 An E2 distance analysis was also run on the same clips. The correct-anchor
 gain over the no-anchor condition decreases with temporal distance from the
