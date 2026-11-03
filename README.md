@@ -297,8 +297,11 @@ positive across the tested anchor budgets:
 
 ### Final loss ablation
 
-The final checkpoint was selected with a fair 5,000-step comparison on the
-same backbone-diverse training and validation manifests:
+The final checkpoint was selected with a 5,000-step loss ablation. This is an
+exploratory result, not an unbiased test-set model-selection protocol: the
+reported REDS clips were also used for this comparison. A clean paper result
+should select the checkpoint on a disjoint tuning split before touching the
+final test clips.
 
 | Recipe | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-MAE |
 |---|---:|---:|---:|---:|
@@ -418,15 +421,15 @@ The intended baseline table is:
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | Bicubic | sparse-anchor | 10% | 31.1660 | 0.919480 | 21.4174 | 6.1242 | not recorded | not recorded |
 | Deterministic MCFT v3 | sparse-anchor | 10% | 31.8325 | 0.934859 | 19.4708 | 5.5211 | not recorded | not recorded |
-| MCFT-Net final control | sparse-anchor | 10% | 33.4222* | 0.946357* | 14.7726* | 4.6024* | 0.174M | not recorded |
 | HAT | standard VSR | 0% | 33.4402 | 0.944047 | 15.4359 | 4.6707 | not recorded | not recorded |
 | HAT + frozen MCFT | modern-base | 10% | 32.2839 | 0.932486 | 18.1964 | 5.3570 | 0.174M + HAT | not recorded |
 | EDVR / BasicVSR++ / VRT | standard VSR | 0% | not evaluated | not evaluated | not evaluated | not evaluated | not recorded | not recorded |
 
-`*` The MCFT-Net final-control row is the strict four-clip uniform-anchor
-control reported above; the HAT rows use the separate eight-clip uniform
-backbone check. Runtime and peak-memory measurements were not recorded in
-these runs and are intentionally labeled rather than inferred.
+The table above is the eight-clip uniform-anchor backbone check. The separate
+four-clip final-control result is `33.4222 / 0.946357 / 14.7726 / 4.6024` and
+must not be read as a same-split comparison with HAT. Runtime and peak-memory
+measurements were not recorded in these runs and are intentionally labeled
+rather than inferred.
 
 The EDVR/BasicVSR++/VRT rows are marked not evaluated because no matching x2
 checkpoint and degradation pipeline were available. Published numbers from a
@@ -524,9 +527,10 @@ configuration. Do not commit Hugging Face tokens.
 
 ## Final MCFT-Net checkpoint
 
-The final model is `mcft_net_final.pth`, selected using a fair 5,000-step
-loss ablation on held-out REDS clips. Under the strict four-clip
-uniform-anchor protocol, its non-anchor average is:
+The final model is `mcft_net_final.pth`. Its 5,000-step loss ablation was an
+exploratory comparison on the reported REDS clips, so this checkpoint should
+not be described as independently selected from a disjoint test set. Under
+the strict four-clip uniform-anchor protocol, its non-anchor average is:
 
 | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
 |---:|---:|---:|---:|
@@ -606,8 +610,8 @@ uniform-anchor aggregate. Per-clip results and the aggregate summary are in
 ### Anchor-causality and anchor-budget experiments
 
 On eight fresh REDS clips (`007, 008, 009, 010, 012, 013, 014, 016`), all
-methods were evaluated on the same 81 non-anchor frames (the union of the
-0%, 10%, and shifted-anchor masks):
+methods were evaluated on the same 81 non-anchor frames (the intersection of
+the 0%, 10%, and shifted-anchor masks):
 
 | Candidate condition | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
 |---|---:|---:|---:|---:|
@@ -616,11 +620,20 @@ methods were evaluated on the same 81 non-anchor frames (the union of the
 | MCFT, correct 10% anchors | 32.1368 | 0.931855 | 18.4193 | 5.2689 |
 | MCFT, shifted 10% anchors | 32.1376 | 0.931865 | 18.4172 | 5.2728 |
 
-Relative to no anchors, correct anchors add `+0.4127 dB` and `+0.00522`
+The E1 table uses the `confidence` MCFT-Net checkpoint
+`checkpoints/mcft_net_final.pth`, not deterministic MCFT v3. Relative to no
+anchors, correct anchors add `+0.4127 dB` and `+0.00522`
 SSIM, while reducing temporal-delta-MAE by `0.3239`. The shifted condition
-is nearly identical in this protocol; therefore this experiment supports the
-value of sparse HR evidence but does not claim strong dependence on exact
-anchor timestamps.
+is nearly identical in this protocol. Because the shifted condition still
+uses true-HR frames from the same clip and no foreign-clip control was run,
+this experiment does not establish timestamp/content causality.
+
+An E2 distance analysis was also run on the same clips. The correct-anchor
+gain over the no-anchor condition decreases with temporal distance from the
+nearest anchor: `+0.4692`, `+0.4284`, `+0.3997`, `+0.3801`, and `+0.3645 dB`
+for distances 1 through 5, respectively. This is consistent with a modest
+local anchor benefit, but the gain is below the original 0.5 dB decision
+threshold at every measured distance.
 
 The anchor-budget sweep uses the same common-frame evaluation mask:
 
