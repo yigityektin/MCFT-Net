@@ -416,15 +416,21 @@ The intended baseline table is:
 
 | Method | Track | Anchors | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-MAE | Params | Runtime |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| Bicubic | sparse-anchor | 10% | — | — | — | — | — | — |
-| Deterministic MCFT | sparse-anchor | 10% | — | — | — | — | — | — |
-| MCFT-Net | sparse-anchor | 10% | — | — | — | — | — | — |
-| EDVR / BasicVSR++ / VRT | standard VSR | 0% | — | — | — | — | — | — |
-| HAT or matched modern base | modern-base | 0% | — | — | — | — | — | — |
+| Bicubic | sparse-anchor | 10% | 31.1660 | 0.919480 | 21.4174 | 6.1242 | not recorded | not recorded |
+| Deterministic MCFT v3 | sparse-anchor | 10% | 31.8325 | 0.934859 | 19.4708 | 5.5211 | not recorded | not recorded |
+| MCFT-Net final control | sparse-anchor | 10% | 33.4222* | 0.946357* | 14.7726* | 4.6024* | 0.174M | not recorded |
+| HAT | standard VSR | 0% | 33.4402 | 0.944047 | 15.4359 | 4.6707 | not recorded | not recorded |
+| HAT + frozen MCFT | modern-base | 10% | 32.2839 | 0.932486 | 18.1964 | 5.3570 | 0.174M + HAT | not recorded |
+| EDVR / BasicVSR++ / VRT | standard VSR | 0% | not evaluated | not evaluated | not evaluated | not evaluated | not recorded | not recorded |
 
-The external-model rows remain intentionally blank until they are evaluated
-under the matched degradation; importing published numbers from different
-protocols would not be a fair comparison.
+`*` The MCFT-Net final-control row is the strict four-clip uniform-anchor
+control reported above; the HAT rows use the separate eight-clip uniform
+backbone check. Runtime and peak-memory measurements were not recorded in
+these runs and are intentionally labeled rather than inferred.
+
+The EDVR/BasicVSR++/VRT rows are marked not evaluated because no matching x2
+checkpoint and degradation pipeline were available. Published numbers from a
+different protocol are not substituted.
 
 ## BBB Demo-Domain Check
 
