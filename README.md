@@ -579,6 +579,13 @@ checkpoint can hurt a strong backbone (33.4402 dB HAT versus 32.2839 dB after
 MCFT); backbone-specific fine-tuning is therefore required before claiming
 transfer to HAT or another modern SR model.
 
+BasicVSR++ is not included in the numerical backbone table. The official
+BasicVSR++ configurations/checkpoints available in this project target the
+canonical REDS/Vimeo **x4** VSR protocol, whereas this benchmark is strictly
+**x2**. Using an x4 checkpoint or silently changing the degradation would not
+be an apples-to-apples comparison. A BasicVSR++ comparison should be added
+only after an x2 checkpoint and matching x2 data pipeline are available.
+
 The benchmark reports non-anchor frames separately from the sparse reference
 frames; anchor frames are not included in the main averages. The strict
 uniform-anchor results are the primary protocol. The current 12-clip extension
