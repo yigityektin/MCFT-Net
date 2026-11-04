@@ -332,6 +332,23 @@ should not be conflated with the earlier eight-clip exploratory benchmark.
 The checkpoint is `checkpoints/mcft_net_tuning_only.pth`; per-clip CSVs are
 `benchmarks/reds_*_tuning_only_quality.csv`.
 
+### Matched HAT clean-holdout comparison
+
+For a same-split comparison, the HAT x2 checkpoint was evaluated on the same
+four unseen clips (`000, 007, 013, 020`) and with the same non-anchor metric
+protocol. HAT was not used for checkpoint selection.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 30.5402 | 0.915767 | 22.2450 | 6.3462 |
+| HAT | 32.8472 | 0.941381 | 15.6350 | 4.7636 |
+| **MCFT-Net (tuning-only)** | **34.0440** | **0.955428** | **13.7441** | **4.2315** |
+
+On this matched clean holdout, MCFT-Net is **+1.1968 dB** above HAT and
+**+3.5039 dB** above bicubic. This replaces the earlier cross-split HAT table
+as the primary HAT comparison. The per-clip files are
+`benchmarks/reds_*_hat_clean_quality.csv`.
+
 ### Foreign-anchor causality control
 
 The deterministic stage was also tested with anchors taken from a different
