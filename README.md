@@ -363,6 +363,28 @@ On this matched clean holdout, MCFT-Net is **+1.1968 dB** above HAT and
 as the primary HAT comparison. The per-clip files are
 `benchmarks/reds_*_hat_clean_quality.csv`.
 
+### Matched BasicVSR++ x2 baseline
+
+BasicVSR++ was adapted to x2 output and tuned for 5,000 iterations on the
+three non-test clips (`001, 006, 011`). It was then evaluated without anchor
+frames on the same six-clip clean holdout (`000, 007, 013, 015, 017, 020`).
+This is a matched local baseline, not an official published BasicVSR++ score.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 29.9188 | 0.906614 | 24.7914 | 7.0832 |
+| BasicVSR++ x2 (3-clip tuning) | 30.8647 | 0.918906 | 21.4400 | 6.2085 |
+| **MCFT-Net (3-clip tuning)** | **33.1788** | **0.950995** | **15.6747** | **4.7719** |
+
+MCFT-Net is **+2.3141 dB** above this BasicVSR++ baseline on the same split.
+Per-clip files are `benchmarks/reds_*_basicvsrpp_quality.csv`.
+
+As a backbone-transfer stress test, applying the current MCFT checkpoint on
+top of BasicVSR++ outputs reduced the six-clip non-anchor average to
+**30.1203 dB** (−0.7444 dB versus BasicVSR++). This indicates that the current
+MCFT checkpoint is calibrated to its bicubic-based candidate distribution and
+should not be presented as a universally composable post-processor.
+
 ### Classical transfer baseline (E5)
 
 As a low-complexity baseline, the legacy motion-frequency script was run in
@@ -509,7 +531,8 @@ The intended baseline table is:
 | Deterministic MCFT v3 | sparse-anchor | 10% | 31.8325 | 0.934859 | 19.4708 | 5.5211 | not recorded | not recorded |
 | HAT | standard VSR | 0% | 33.4402 | 0.944047 | 15.4359 | 4.6707 | not recorded | not recorded |
 | HAT + frozen MCFT | modern-base | 10% | 32.2839 | 0.932486 | 18.1964 | 5.3570 | 0.174M + HAT | not recorded |
-| EDVR / BasicVSR++ / VRT | standard VSR | 0% | not evaluated | not evaluated | not evaluated | not evaluated | not recorded | not recorded |
+| BasicVSR++ x2 (3-clip tuning) | standard VSR | 0% | 30.8647 | 0.918906 | 21.4400 | 6.2085 | 7.18M | not recorded |
+| EDVR / VRT | standard VSR | 0% | not evaluated | not evaluated | not evaluated | not evaluated | not recorded | not recorded |
 
 The table above is the eight-clip uniform-anchor backbone check. The separate
 four-clip final-control result is `33.4222 / 0.946357 / 14.7726 / 4.6024` and
@@ -517,9 +540,10 @@ must not be read as a same-split comparison with HAT. Runtime and peak-memory
 measurements were not recorded in these runs and are intentionally labeled
 rather than inferred.
 
-The EDVR/BasicVSR++/VRT rows are marked not evaluated because no matching x2
-checkpoint and degradation pipeline were available. Published numbers from a
-different protocol are not substituted.
+The BasicVSR++ row uses the matched local x2 adaptation described above.
+EDVR/VRT remain unevaluated because no matching x2 checkpoint and degradation
+pipeline were available. Published numbers from a different protocol are not
+substituted.
 
 ## BBB Demo-Domain Check
 
