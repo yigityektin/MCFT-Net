@@ -349,6 +349,22 @@ On this matched clean holdout, MCFT-Net is **+1.1968 dB** above HAT and
 as the primary HAT comparison. The per-clip files are
 `benchmarks/reds_*_hat_clean_quality.csv`.
 
+### Classical transfer baseline (E5)
+
+As a low-complexity baseline, the legacy motion-frequency script was run in
+its `highpass` residual-transfer mode on the same four clean clips. This is a
+warp/high-pass transfer baseline, not the full constrained MCFT pipeline.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 30.5402 | 0.915767 | 22.2450 | 6.3462 |
+| High-pass transfer baseline | 30.0662 | 0.904488 | 22.5072 | 6.5826 |
+| **MCFT-Net (tuning-only)** | **34.0440** | **0.955428** | **13.7441** | **4.2315** |
+
+The simple transfer baseline is **-0.4739 dB** below bicubic, while MCFT-Net
+is **+3.9778 dB** above it. Per-clip files are
+`benchmarks/reds_*_e5_quality.csv`.
+
 ### Foreign-anchor causality control
 
 The deterministic stage was also tested with anchors taken from a different
