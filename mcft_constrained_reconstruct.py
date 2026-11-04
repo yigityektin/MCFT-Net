@@ -226,6 +226,8 @@ def main():
     p.add_argument('--flow-method', choices=['dis','farneback','raft'], default='dis')
     p.add_argument('--local-refinement', choices=['phase','affine','none'], default='phase')
     p.add_argument('--content-adaptive', action='store_true')
+    p.add_argument('--no-diagnostics', action='store_true',
+                   help='Do not compute or print GT-dependent quality/optimal-scale diagnostics.')
     args=p.parse_args(); manifest=json.loads(Path(args.anchors).read_text()); anchors=sorted(map(int,manifest['anchor_indices']))
     degradation=json.loads(Path(args.degradation_model).read_text()) if args.degradation_model else None
     cap=cv2.VideoCapture(args.ground_truth); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); aset=set(anchors)
@@ -324,15 +326,17 @@ def main():
             cc_delta=chroma_sum/np.maximum(weight_sum[...,None],1e-6)
             ycc[...,1:]=np.clip(ycc[...,1:].astype(np.float32)+args.chroma_strength*c[...,None]*cc_delta,0,255).astype(np.uint8)
         result=cv2.cvtColor(ycc,cv2.COLOR_YCrCb2BGR)
-        gty=cv2.cvtColor(gt,cv2.COLOR_BGR2YCrCb)[...,0].astype(np.float32)
-        if args.multiframe_radius>0:
+        if not args.no_diagnostics:
+            gty=cv2.cvtColor(gt,cv2.COLOR_BGR2YCrCb)[...,0].astype(np.float32)
+        if not args.no_diagnostics and args.multiframe_radius>0:
             mf_delta=rec-rec_before_multiframe
             mf_dot+=float(np.sum(mf_delta*(gty-rec_before_multiframe)))
             mf_energy+=float(np.sum(mf_delta*mf_delta))
-        for name,img in [('bicubic',by),('constrained',rec)]:
-            ps,ss,em=quality(gty,img); rows.append({'frame':i,'method':name,'psnr_y':ps,'ssim_y':ss,'edge_mae':em})
+        if not args.no_diagnostics:
+            for name,img in [('bicubic',by),('constrained',rec)]:
+                ps,ss,em=quality(gty,img); rows.append({'frame':i,'method':name,'psnr_y':ps,'ssim_y':ss,'edge_mae':em})
         if args.save_frames:
-            cv2.imwrite(str(out/f'{i:04d}_gt.png'),gt)
+            if not args.no_diagnostics: cv2.imwrite(str(out/f'{i:04d}_gt.png'),gt)
             cv2.imwrite(str(out/f'{i:04d}_bicubic.png'),base)
             cv2.imwrite(str(out/f'{i:04d}_mcft.png'),result)
         if writer: writer.write(result)
@@ -342,12 +346,13 @@ def main():
     if lr_cap: lr_cap.release()
     if base_cap: base_cap.release()
     if writer: writer.release()
-    with (out/'metrics.csv').open('w',newline='') as f:
-        wr=csv.DictWriter(f,fieldnames=rows[0]);wr.writeheader();wr.writerows(rows)
-    for name in ['bicubic','constrained']:
-        q=[r for r in rows if r['method']==name]
-        print(name,'PSNR',np.mean([r['psnr_y'] for r in q]),'SSIM',np.mean([r['ssim_y'] for r in q]),'Edge',np.mean([r['edge_mae'] for r in q]))
-    if mf_energy>0:
+    if rows:
+        with (out/'metrics.csv').open('w',newline='') as f:
+            wr=csv.DictWriter(f,fieldnames=rows[0]);wr.writeheader();wr.writerows(rows)
+        for name in ['bicubic','constrained']:
+            q=[r for r in rows if r['method']==name]
+            print(name,'PSNR',np.mean([r['psnr_y'] for r in q]),'SSIM',np.mean([r['ssim_y'] for r in q]),'Edge',np.mean([r['edge_mae'] for r in q]))
+    if not args.no_diagnostics and mf_energy>0:
         print('multiframe optimal correction scale',mf_dot/mf_energy)
 
 if __name__=='__main__':main()
