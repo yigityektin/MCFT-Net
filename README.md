@@ -332,6 +332,25 @@ should not be conflated with the earlier eight-clip exploratory benchmark.
 The checkpoint is `checkpoints/mcft_net_tuning_only.pth`; per-clip CSVs are
 `benchmarks/reds_*_tuning_only_quality.csv`.
 
+### Foreign-anchor causality control
+
+The deterministic stage was also tested with anchors taken from a different
+clip for every target (`000 <- 007`, `007 <- 013`, `013 <- 020`,
+`020 <- 000`). The target LR/base video and the non-anchor mask were unchanged.
+Across the same four clean holdout clips:
+
+| Anchor source | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic, no reconstruction | 30.5402 | 0.915767 | 22.2450 | 6.3462 |
+| Correct same-clip anchors | **31.1802** | **0.930827** | **20.3480** | **5.7558** |
+| Foreign-clip anchors | 30.3400 | 0.917240 | 22.4337 | 12.9546 |
+
+Correct anchors therefore add **+0.6401 dB** over bicubic, while foreign anchors
+reduce PSNR by **0.2002 dB** and substantially worsen temporal error. This
+control confirms that the deterministic gain depends on anchor content, not
+only on the presence or count of anchor frames. Per-clip files are named
+`benchmarks/reds_*_foreign_causality_quality.csv`.
+
 ### Reproducing the REDS aggregate
 
 After running `evaluate_against_ground_truth.py` for each clip, aggregate the
