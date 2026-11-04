@@ -312,6 +312,26 @@ final test clips.
 The full recipe is retained because it gives the best PSNR, edge fidelity, and
 temporal consistency; the SSIM difference is negligible.
 
+### Leakage-free tuning-only check
+
+To separate model selection from the final test, a new checkpoint was trained
+using only REDS clips `001, 006, 011, 015, 017` for tuning and `018` for
+validation. It was then evaluated once on four unseen clips: `000, 007, 013,
+020`. All numbers below are non-anchor averages at the same x2, 10%-uniform
+anchor protocol.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 30.5402 | 0.915767 | 22.2450 | 6.3462 |
+| Deterministic MCFT | 31.1802 | 0.930827 | 20.3480 | 5.7558 |
+| **MCFT-Net (tuning-only checkpoint)** | **34.0440** | **0.955428** | **13.7441** | **4.2315** |
+
+The tuning-only checkpoint improves over bicubic by **+3.5039 dB** and over
+deterministic MCFT by **+2.8638 dB**. This is a four-clip clean holdout and
+should not be conflated with the earlier eight-clip exploratory benchmark.
+The checkpoint is `checkpoints/mcft_net_tuning_only.pth`; per-clip CSVs are
+`benchmarks/reds_*_tuning_only_quality.csv`.
+
 ### Reproducing the REDS aggregate
 
 After running `evaluate_against_ground_truth.py` for each clip, aggregate the
