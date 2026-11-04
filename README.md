@@ -332,6 +332,20 @@ should not be conflated with the earlier eight-clip exploratory benchmark.
 The checkpoint is `checkpoints/mcft_net_tuning_only.pth`; per-clip CSVs are
 `benchmarks/reds_*_tuning_only_quality.csv`.
 
+An expanded split used only three tuning clips (`001, 006, 011`) and one
+validation clip (`018`), leaving six unseen test clips (`000, 007, 013, 015,
+017, 020`). The resulting six-clip clean holdout is:
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 29.9188 | 0.906614 | 24.7914 | 7.0832 |
+| Deterministic MCFT | 30.5035 | 0.924084 | 22.7491 | 6.4424 |
+| **MCFT-Net (3-clip tuning)** | **33.1788** | **0.950995** | **15.6747** | **4.7719** |
+
+On this expanded clean holdout, MCFT-Net improves over bicubic by **+3.2600
+dB** and over deterministic MCFT by **+2.6753 dB**. Per-clip files are
+`benchmarks/reds_*_clean6_quality.csv`.
+
 ### Matched HAT clean-holdout comparison
 
 For a same-split comparison, the HAT x2 checkpoint was evaluated on the same
