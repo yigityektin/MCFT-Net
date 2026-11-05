@@ -665,6 +665,16 @@ source .venv/bin/activate
 pip install -r scripts/requirements.txt
 ```
 
+The requirements file uses bounded versions for reproducibility while leaving
+the PyTorch CUDA wheel choice to the host. The reported GPU experiments used
+BasicSR 1.4.2, PyTorch 2.11.0+cu128 (L40S), and TorchVision 0.26.0+cu128.
+Install the matching CUDA wheels from the official PyTorch index before the
+requirements file when reproducing on a GPU. Run the source smoke test with:
+
+```bash
+python scripts/smoke_test.py
+```
+
 `ffmpeg` is required for video encoding/decoding workflows and should be
 installed separately.
 
@@ -714,6 +724,14 @@ For modern-base training, pass HR-size base-prior videos:
   --val-base /path/to/val_modern_sr_base.mkv \
   --val-anchors external_benchmarks/REDS-Val4/006/anchors_10pct.json
 ```
+
+### Guard/residual loss sensitivity
+
+The confidence model exposes `--guard-weight` and `--residual-weight`. These
+weights must be selected on a tuning clip, not on the final test clips. A
+reproducible GPU sweep is provided in `scripts/run_loss_sweep.sh`; set the
+train/validation paths and `OUT_DIR`, then compare checkpoints only on the
+held-out test split after selecting one setting.
 
 Hugging Face authentication may be needed depending on dataset access and local
 configuration. Do not commit Hugging Face tokens.
