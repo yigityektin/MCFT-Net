@@ -1,6 +1,9 @@
 ---
 library_name: pytorch
 license: mit
+datasets:
+  - snah/REDS
+  - bijinc/vimeo-90k-mini
 tags:
   - video-super-resolution
   - image-restoration
@@ -156,10 +159,26 @@ Important: a network trained with bicubic-base MCFT inputs should not be assumed
 to work on HAT/SwinIR/Real-ESRGAN-base inputs. Modern-base MCFT-Net requires
 training or fine-tuning with the same base family used at inference.
 
-## Hugging Face Streaming Data
+## Hugging Face datasets and artifacts
 
-The project uses Hugging Face as a streaming data source, not as a hosted model
-service.
+The project uses Hugging Face both as a public data source and as an optional
+artifact store; it is not required for local inference once the checkpoint and
+video inputs are present.
+
+The public REDS validation frames used for the BasicVSR++ comparison come from
+the `snah/REDS` dataset mirror. For example, on a GPU machine with the `hf`
+CLI installed:
+
+```bash
+hf download snah/REDS \
+  --repo-type dataset \
+  --include "val_sharp.zip" \
+  --local-dir /tmp/reds_hf
+```
+
+The x2 LR videos were regenerated deterministically by bicubic downsampling
+the extracted `val_sharp` frames. The smaller streaming pretraining path below
+uses a separate Vimeo-90K mirror.
 
 The streaming integration is in:
 
@@ -694,6 +713,11 @@ configuration. Do not commit Hugging Face tokens.
 
 ## Artifact Policy
 
+Source code and small manifests belong in Git. Large checkpoints, generated
+videos, extracted datasets, and benchmark dumps are external artifacts. Their
+paths and provenance are recorded here, while the binaries should be
+distributed through Hugging Face, GitHub Releases, or project storage.
+
 ## Final MCFT-Net checkpoint
 
 The final model is `mcft_net_final.pth`. Its 5,000-step loss ablation was an
@@ -705,8 +729,8 @@ the strict four-clip uniform-anchor protocol, its non-anchor average is:
 |---:|---:|---:|---:|
 | 33.4222 | 0.946357 | 14.7726 | 4.6024 |
 
-The checkpoint is distributed through the project Hugging Face repository;
-the per-clip evaluation CSVs are under `benchmarks/`.
+The checkpoint is intended for distribution through the project Hugging Face
+repository; the per-clip evaluation CSVs are under `benchmarks/`.
 
 The 12-clip adaptive-anchor extension is reported separately above and should
 not be interpreted as a strict uniform-anchor benchmark.
