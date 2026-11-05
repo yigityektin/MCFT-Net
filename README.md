@@ -40,7 +40,7 @@ For the REDS benchmark runs in this repository:
 
 ```text
 scale: x2
-degradation: OpenCV bicubic downsample
+degradation: OpenCV `INTER_AREA` downsample (x2)
 anchor budget: 10% true HR frames
 anchor policy: uniform anchors
 primary evaluation split: non-anchor frames
@@ -457,11 +457,13 @@ The public BasicVSR++ per-clip non-anchor PSNR values were:
 | 017 | 28.8063 | 30.5882 | +1.7819 |
 | 020 | 30.3643 | 32.3661 | +2.0017 |
 
-The BasicVSR++ network has 7,322,927 trainable parameters and its public
-checkpoint is approximately 28 MB. The MCFT checkpoints remain compact (the
-large public refinement checkpoint is approximately 3.5 MB); wall-clock and
-peak-GPU-memory measurements are hardware- and tile-size-dependent and should
-be reported alongside any deployment claim rather than inferred from file size.
+The default MCFT-Net has 173,732 trainable parameters. The larger public
+BasicVSR++ refinement checkpoint (`confidence`, width 64, eight residual
+blocks) has 906,948 parameters. BasicVSR++ has 7,322,927 trainable parameters
+and its public checkpoint is approximately 28 MB. Checkpoint file size and
+parameter count are distinct quantities; wall-clock and peak-GPU-memory
+measurements are hardware- and tile-size-dependent and should be reported
+separately.
 
 ### Classical transfer baseline (E5)
 
@@ -478,6 +480,28 @@ warp/high-pass transfer baseline, not the full constrained MCFT pipeline.
 The simple transfer baseline is **-0.4739 dB** below bicubic, while MCFT-Net
 is **+3.9778 dB** above it. Per-clip files are
 `benchmarks/reds_*_e5_quality.csv`.
+
+### E5 nearest-anchor and LR-projection controls
+
+The deterministic MCFT candidate was also compared with two deliberately
+simple controls on the same six-clip, x2, 10%-anchor protocol. `nearest_warp`
+warps the closest HR anchor directly; `warp_project` applies the LR
+observation projection after that warp. Metrics are weighted averages over
+non-anchor frames.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Nearest-anchor warp | 24.0634 | 0.801585 | 29.2311 | 11.5781 |
+| Warp + LR projection | 31.1467 | 0.921825 | **18.9414** | **5.9146** |
+| Deterministic MCFT v3 candidate | 31.0843 | **0.925195** | 22.7444 | 6.0102 |
+
+LR projection is essential: it improves the raw warp by more than 7 dB. On
+this protocol, the simple warp+projection control slightly exceeds MCFT v3 in
+PSNR, edge error, and temporal error, while MCFT v3 is better in SSIM. This
+negative control means the deterministic MCFT stage should not be presented
+as unambiguously superior to a simple projection baseline. The stronger
+result is the learned anchor-aware refinement: the E1 A1 model reaches
+33.3845 dB on the same six-clip non-anchor holdout.
 
 ### Foreign-anchor causality control
 
@@ -845,6 +869,44 @@ CSVs and 10,000-resample clip-bootstrap intervals are stored in
 `benchmarks/reds_*_e1_final.csv`, `benchmarks/reds_*_e3_anchor_budget.csv`,
 `benchmarks/reds_e1_anchor_causality_bootstrap.csv`, and
 `benchmarks/reds_e3_anchor_budget_bootstrap.csv`.
+
+### Learned E1 anchor ablation (fresh six-clip holdout)
+
+To test whether the learned refinement uses the *content* of the HR anchors,
+we trained two identical confidence models on clip `001` and validated on
+clip `018`, then evaluated once on unseen clips `000, 007, 013, 015, 017,
+020`. All values below are weighted averages over non-anchor frames.
+
+| Condition | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| A0: independently trained no-anchor model | 30.7719 | 0.9187 | 21.8466 | 6.3279 |
+| A1: correct same-clip 10% anchors | **33.3845** | **0.9513** | **15.4862** | **4.6541** |
+| A2: foreign-clip anchors | 30.6281 | 0.9160 | 22.5251 | 12.9787 |
+| A3: balanced random 10% anchors | 33.3808 | 0.9515 | 15.4546 | 4.6496 |
+
+Relative to A0, correct anchors provide `+2.6126 dB` PSNR-Y, reduce Edge-MAE
+by `6.3603`, and reduce temporal-delta-MAE by `1.6738`. Replacing the
+anchors with frames from another clip removes the gain (`-2.7564 dB` versus
+A1 and slightly below A0), which is a direct content-causality control.
+Balanced random anchor placement is essentially unchanged from uniform
+placement. A +5-frame shift also remains similar because the shifted anchors
+are still temporally nearby; it is not interpreted as a failure of causality.
+
+The learned model's inference-time anchor-budget sweep was:
+
+| Anchor budget | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---:|---:|---:|---:|---:|
+| 2% | 29.9661 | 0.8891 | 24.7550 | 7.3418 |
+| 5% | 32.2808 | 0.9380 | 18.1453 | 5.3973 |
+| 10% | 33.3845 | 0.9513 | 15.4862 | 4.6541 |
+| 20% | 34.1687 | 0.9588 | 13.8755 | 4.0895 |
+
+The 0% inference point for the 10%-anchor-trained model was `28.6416 dB` and
+is shown only as an out-of-distribution diagnostic; the independently trained
+A0 model above is the proper no-anchor baseline. These budget results are
+therefore a coverage-sensitivity sweep, not separately retrained optimum
+models for every budget. The per-clip E1/E3 CSVs are stored in the benchmark
+archive.
 
 ### Reproducibility
 

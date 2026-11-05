@@ -85,7 +85,11 @@ def build_model(architecture,width,blocks):
     raise ValueError(f'Unknown architecture: {architecture}')
 
 
-def distance_map(index,anchors,h,w):return np.full((h,w,1),min(abs(index-a) for a in anchors)/20.0,np.float32)
+def distance_map(index,anchors,h,w):
+    # No-anchor control runs use a saturated distance feature rather than
+    # failing on min([]).  A distance of 1.0 means "no nearby anchor".
+    distance = min(abs(index-a) for a in anchors)/20.0 if anchors else 1.0
+    return np.full((h,w,1),distance,np.float32)
 
 
 def make_input(base,candidate,index,anchors):
@@ -129,8 +133,12 @@ class PatchDataset(Dataset):
         return x,y,lr
 
 
-def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy',base_path=None):
+def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy',base_path=None,anchor_mode='true'):
     anchors=sorted(json.loads(Path(anchor_path).read_text())['anchor_indices']);aset=set(anchors)
+    if anchor_mode == 'none':
+        anchors=[]; aset=set()
+    elif anchor_mode != 'true':
+        raise ValueError(f'Unknown anchor mode: {anchor_mode}')
     caps=[cv2.VideoCapture(p) for p in (gt_path,lr_path,candidate_path)];rng=np.random.default_rng(seed)
     base_cap=cv2.VideoCapture(base_path) if base_path else None
     if base_path and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {base_path}')
@@ -141,8 +149,9 @@ def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_
         gt,lr,candidate=[frame for _,frame in reads]
         if index not in aset:
             base=read_base_frame(base_cap,lr,index,gt.shape[1],gt.shape[0])
-            feature=(make_confidence_input(base,candidate,lr,index,anchors)
-                     if architecture=='confidence' else make_input(base,candidate,index,anchors))
+            feature_candidate = base if anchor_mode == 'none' else candidate
+            feature=(make_confidence_input(base,feature_candidate,lr,index,anchors)
+                     if architecture=='confidence' else make_input(base,feature_candidate,index,anchors))
             for _ in range(per_frame):
                 x=int(rng.integers(0,(gt.shape[1]-patch)//2+1))*2;y=int(rng.integers(0,(gt.shape[0]-patch)//2+1))*2
                 inputs.append(feature[y:y+patch,x:x+patch].astype(np.float16));targets.append(gt[y:y+patch,x:x+patch])
@@ -165,8 +174,8 @@ def device_for(name):
 
 def train(args):
     torch.manual_seed(7);random.seed(7);device=device_for(args.device)
-    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture,args.train_base)
-    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture,args.val_base)
+    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture,args.train_base,args.anchor_mode)
+    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture,args.val_base,args.anchor_mode)
     loader=DataLoader(trainset,batch_size=args.batch_size,shuffle=True,num_workers=0);vloader=DataLoader(valset,batch_size=args.batch_size,shuffle=False,num_workers=0)
     model=build_model(args.architecture,args.width,args.blocks).to(device);optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4)
     best=float('inf')
@@ -193,7 +202,7 @@ def train(args):
                 x=x.to(device);y=y.to(device);prediction=model(x,x[:,:3]);validation+=float(torch.mean(torch.abs(prediction-y)))*len(x)
         validation/=len(valset);print('epoch',epoch+1,'train',running/len(trainset),'val_l1',validation)
         if validation<best:
-            best=validation;torch.save({'state':model.state_dict(),'width':args.width,'blocks':args.blocks,'architecture':args.architecture,'val_l1':best},args.output)
+            best=validation;torch.save({'state':model.state_dict(),'width':args.width,'blocks':args.blocks,'architecture':args.architecture,'anchor_mode':args.anchor_mode,'val_l1':best},args.output)
 
 
 def tiled(model,feature,device,tile,overlap):
@@ -217,7 +226,10 @@ def tiled(model,feature,device,tile,overlap):
 
 def infer(args):
     device=device_for(args.device);checkpoint=torch.load(args.model,map_location=device,weights_only=True);model=build_model(checkpoint.get('architecture','legacy'),checkpoint['width'],checkpoint['blocks']).to(device);model.load_state_dict(checkpoint['state']);model.eval()
-    anchors=sorted(json.loads(Path(args.anchors).read_text())['anchor_indices']);aset=set(anchors);candidate=cv2.VideoCapture(args.candidate);lr=cv2.VideoCapture(args.low_resolution)
+    anchors=sorted(json.loads(Path(args.anchors).read_text())['anchor_indices'])
+    if args.anchor_mode == 'none': anchors=[]
+    elif args.anchor_mode != 'true': raise ValueError(f'Unknown anchor mode: {args.anchor_mode}')
+    aset=set(anchors);candidate=cv2.VideoCapture(args.candidate);lr=cv2.VideoCapture(args.low_resolution)
     base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
     if args.base_video and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {args.base_video}')
     n=int(candidate.get(cv2.CAP_PROP_FRAME_COUNT));n=min(n,args.max_frames) if args.max_frames else n;w=int(candidate.get(cv2.CAP_PROP_FRAME_WIDTH));h=int(candidate.get(cv2.CAP_PROP_FRAME_HEIGHT));fps=candidate.get(cv2.CAP_PROP_FPS);writer=cv2.VideoWriter(args.output,cv2.VideoWriter_fourcc(*'FFV1'),fps,(w,h))
@@ -230,8 +242,9 @@ def infer(args):
                 records.append(c)
                 if index not in aset:
                     base=read_base_frame(base_cap,l,index,w,h)
-                    feature=(make_confidence_input(base,c,l,index,anchors)
-                             if checkpoint.get('architecture')=='confidence' else make_input(base,c,index,anchors))
+                    feature_candidate = base if args.anchor_mode == 'none' else c
+                    feature=(make_confidence_input(base,feature_candidate,l,index,anchors)
+                             if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
                     features.append(feature);slots.append(index-start)
             if features:
                 tensor=torch.from_numpy(np.stack(features)).permute(0,3,1,2).float().to(device)
@@ -247,8 +260,9 @@ def infer(args):
         if not(ok and okl):raise RuntimeError(index)
         if index not in aset:
             base=read_base_frame(base_cap,l,index,w,h)
-            feature=(make_confidence_input(base,c,l,index,anchors)
-                     if checkpoint.get('architecture')=='confidence' else make_input(base,c,index,anchors))
+            feature_candidate = base if args.anchor_mode == 'none' else c
+            feature=(make_confidence_input(base,feature_candidate,l,index,anchors)
+                     if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
             base_frame=base
             c=tiled(model,feature,device,args.tile,args.overlap)
             if args.blend_alpha < 1.0:
@@ -266,8 +280,8 @@ def main():
     for prefix in ('train','val'):
         for name in ('gt','lr','candidate','anchors'):t.add_argument(f'--{prefix}-{name}',required=True)
         t.add_argument(f'--{prefix}-base',help='Optional HR-size SR/base-prior video for modern-base training.')
-    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--guard-weight',type=float,default=0.25);t.add_argument('--residual-weight',type=float,default=0.005);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
-    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--blend-alpha',type=float,default=1.0,help='Blend model output with HR base: base + alpha*(prediction-base)');i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
+    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--anchor-mode',choices=('true','none'),default='true');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--guard-weight',type=float,default=0.25);t.add_argument('--residual-weight',type=float,default=0.005);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
+    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--anchor-mode',choices=('true','none'),default='true');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--blend-alpha',type=float,default=1.0,help='Blend model output with HR base: base + alpha*(prediction-base)');i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
     args=p.parse_args();train(args) if args.command=='train' else infer(args)
 
 
