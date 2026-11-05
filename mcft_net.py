@@ -57,7 +57,7 @@ class ProtectedMCFTNet(SpatialMCFTNet):
         anchor=self.anchor_body(self.anchor_head(anchor_input))
         gate=self.gate(torch.cat((spatial,anchor),dim=1))
         features=self.fusion(spatial+gate*anchor)
-        correction=0.10*torch.tanh(self.tail(features))
+        correction=0.25*torch.tanh(self.tail(features))
         return torch.clamp(protected+self.output_gate(features)*correction,0,1)
 
 
@@ -73,7 +73,7 @@ class ConfidenceMCFTNet(ProtectedMCFTNet):
         anchor=self.anchor_body(self.anchor_head(anchor_input))
         gate=self.gate(torch.cat((spatial,anchor),dim=1))
         features=self.fusion(spatial+gate*anchor)
-        correction=0.10*torch.tanh(self.tail(features))
+        correction=0.25*torch.tanh(self.tail(features))
         return torch.clamp(protected+self.output_gate(features)*correction,0,1)
 
 
@@ -183,7 +183,9 @@ def train(args):
             pred_patch=torch.mean(torch.abs(prediction-y),dim=(1,2,3))
             protected_patch=torch.mean(torch.abs(protected-y),dim=(1,2,3))
             guard=torch.mean(torch.relu(pred_patch-protected_patch))
-            loss=charb+0.15*grad+0.20*observation+0.005*residual+0.25*guard
+            loss=(charb+0.15*grad+0.20*observation
+                  +args.residual_weight*residual
+                  +args.guard_weight*guard)
             optimizer.zero_grad();loss.backward();optimizer.step();running+=float(loss.detach())*len(x)
         model.eval();validation=0
         with torch.inference_mode():
@@ -209,7 +211,8 @@ def tiled(model,feature,device,tile,overlap):
             for x in xs:
                 crop=feature[y:y+tile,x:x+tile];tensor=torch.from_numpy(crop).permute(2,0,1)[None].float().to(device)
                 out=model(tensor,tensor[:,:3])[0].permute(1,2,0).cpu().numpy();acc[y:y+tile,x:x+tile]+=out*window;weight[y:y+tile,x:x+tile]+=window
-    return np.clip(acc/np.maximum(weight,1e-6)*255,0,255).astype(np.uint8)
+    # Keep sub-uint8 residuals alive so inference-time blending is meaningful.
+    return np.clip(acc/np.maximum(weight,1e-6)*255,0,255).astype(np.float32)
 
 
 def infer(args):
@@ -246,7 +249,12 @@ def infer(args):
             base=read_base_frame(base_cap,l,index,w,h)
             feature=(make_confidence_input(base,c,l,index,anchors)
                      if checkpoint.get('architecture')=='confidence' else make_input(base,c,index,anchors))
+            base_frame=base
             c=tiled(model,feature,device,args.tile,args.overlap)
+            if args.blend_alpha < 1.0:
+                c=np.clip(base_frame.astype(np.float32)+args.blend_alpha*(c.astype(np.float32)-base_frame.astype(np.float32)),0,255).astype(np.uint8)
+            else:
+                c=np.clip(c,0,255).astype(np.uint8)
         writer.write(c);print(f'[{index+1}/{n}]')
     candidate.release();lr.release();writer.release()
     if base_cap:base_cap.release()
@@ -258,8 +266,8 @@ def main():
     for prefix in ('train','val'):
         for name in ('gt','lr','candidate','anchors'):t.add_argument(f'--{prefix}-{name}',required=True)
         t.add_argument(f'--{prefix}-base',help='Optional HR-size SR/base-prior video for modern-base training.')
-    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
-    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
+    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--guard-weight',type=float,default=0.25);t.add_argument('--residual-weight',type=float,default=0.005);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
+    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--blend-alpha',type=float,default=1.0,help='Blend model output with HR base: base + alpha*(prediction-base)');i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
     args=p.parse_args();train(args) if args.command=='train' else infer(args)
 
 

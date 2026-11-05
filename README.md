@@ -403,6 +403,30 @@ split. Per-clip files are `benchmarks/reds_*_public_basicvsrpp_quality.csv`.
 This public baseline is the preferred BasicVSR++ reference; the earlier local
 MKV-packaged baseline is retained only for provenance.
 
+### Fair public MCFT versus BasicVSR++ comparison
+
+The same public REDS six-clip split was also used to retrain MCFT-Net from the
+public bicubic candidate. Results below are averages over non-anchor frames.
+MCFT-Net was trained on clip `001` and validated on clip `018`; BasicVSR++ was
+tuned on clips `001, 006, 011`.
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 29.4916 | 0.889688 | 28.8088 | 7.3951 |
+| BasicVSR++ x2 (public REDS) | **31.7327** | **0.930368** | **19.3935** | **5.7495** |
+| MCFT-Net (public tuning) | 30.4239 | 0.910397 | 23.9121 | 6.5002 |
+
+MCFT-Net improves bicubic by **+0.9323 dB**, but remains **1.3088 dB below**
+the stronger BasicVSR++ backbone. This is the preferred fair comparison;
+earlier higher MCFT scores used a different packaged-MKV/anchor protocol.
+
+As a refinement experiment, MCFT-Net was trained directly on BasicVSR++
+outputs. On the same six clips, the refinement changed the non-anchor average
+from 31.7327 dB to approximately 31.6858 dB, while improving
+temporal-delta-MAE from 5.7495 to approximately 5.5900. Thus the current
+refiner provides temporal smoothing but does not improve BasicVSR++ spatial
+fidelity; it should not be described as a spatially superior replacement.
+
 ### Classical transfer baseline (E5)
 
 As a low-complexity baseline, the legacy motion-frequency script was run in
