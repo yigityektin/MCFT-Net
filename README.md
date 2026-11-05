@@ -385,6 +385,24 @@ top of BasicVSR++ outputs reduced the six-clip non-anchor average to
 MCFT checkpoint is calibrated to its bicubic-based candidate distribution and
 should not be presented as a universally composable post-processor.
 
+### Public REDS reproduction of BasicVSR++
+
+To validate the baseline independently of the project’s earlier packaged MKV
+files, the REDS validation GT was downloaded from the public `snah/REDS` mirror.
+The x2 LR and bicubic videos were regenerated deterministically on the GPU, and
+BasicVSR++ was trained for 5,000 iterations on clips `001, 006, 011` only. On
+the six unseen clips (`000, 007, 013, 015, 017, 020`), using non-anchor frames:
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Bicubic | 29.4916 | 0.889688 | 28.8088 | 7.3951 |
+| **BasicVSR++ x2 (public REDS)** | **31.7327** | **0.930368** | **19.3935** | **5.7495** |
+
+BasicVSR++ improves over bicubic by **+2.2411 dB** on this public six-clip
+split. Per-clip files are `benchmarks/reds_*_public_basicvsrpp_quality.csv`.
+This public baseline is the preferred BasicVSR++ reference; the earlier local
+MKV-packaged baseline is retained only for provenance.
+
 ### Classical transfer baseline (E5)
 
 As a low-complexity baseline, the legacy motion-frequency script was run in
