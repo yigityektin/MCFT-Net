@@ -503,6 +503,25 @@ as unambiguously superior to a simple projection baseline. The stronger
 result is the learned anchor-aware refinement: the E1 A1 model reaches
 33.3845 dB on the same six-clip non-anchor holdout.
 
+### E6/E7 deterministic component audit
+
+The deterministic stage was selected on clip `018` and then evaluated once on
+the six test clips. The selected configuration disables local phase refinement
+while retaining LR projection and a radius-2 multiframe projection
+(`projection-strength=0.8`, `lambda-gradient=0.35`).
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-delta-MAE |
+|---|---:|---:|---:|---:|
+| Deterministic MCFT v3 | 31.0843 | 0.925195 | 22.7444 | 6.0102 |
+| E6 selected (`no_local` + multiframe) | **32.0192** | **0.938929** | **19.6280** | **5.4243** |
+
+Thus the component audit improves the deterministic candidate by `+0.9349 dB`,
+reduces Edge-MAE by `3.1164`, and reduces temporal-delta-MAE by `0.5859`.
+The learned A1 refinement remains stronger at `33.3845 dB`; the E6 result is
+reported as a deterministic-stage improvement, not as a replacement for the
+learned model. Projection ablations confirm that LR projection is essential,
+while local phase refinement is not robust on the validation/test split.
+
 ### Foreign-anchor causality control
 
 The deterministic stage was also tested with anchors taken from a different
@@ -749,6 +768,9 @@ configuration. Do not commit Hugging Face tokens.
 | `estimate_degradation.py` | Degradation-model estimation |
 | `evaluate_against_ground_truth.py` | PSNR/SSIM/edge/temporal evaluation |
 | `scripts/run_mcft_best_texture_benchmark.sh` | Frozen benchmark runner |
+| `scripts/run_loss_sweep.sh` | Guard/residual loss sensitivity sweep |
+| `scripts/run_mcft_component_sweep.sh` | Deterministic E6/E7 component sweep |
+| `scripts/smoke_test.py` | Source-level reproducibility smoke test |
 | `scripts/run_bbb_hatbase_experiment.sh` | BBB modern-base experiment runner |
 | `summarize_mcft_benchmark.py` | Per-clip to aggregate summary builder |
 | `analyze_mcft_failures.py` | Failure-frame ranking and diagnostic panels |
@@ -925,6 +947,20 @@ A0 model above is the proper no-anchor baseline. These budget results are
 therefore a coverage-sensitivity sweep, not separately retrained optimum
 models for every budget. The per-clip E1/E3 CSVs are stored in the benchmark
 archive.
+
+A guard/residual sensitivity sweep selected `guard_weight=0.0` and
+`residual_weight=0.01` on the training/validation split. On the six-clip
+non-anchor test set this checkpoint reached `33.3822 dB`, `0.951574` SSIM,
+`15.4820` Edge-MAE, and `4.6588` temporal-delta-MAE, versus `33.3845 dB`,
+`0.951326`, `15.4862`, and `4.6541` for the original A1 checkpoint. The
+difference is negligible, so the sweep is reported as a robustness check and
+the original A1 checkpoint remains the simpler reference model.
+
+For the remaining deterministic-stage audit,
+`scripts/run_mcft_component_sweep.sh` provides a tuning-only E6/E7 matrix:
+local-refinement, multiscale gradient, LR-projection, and multiframe ablations,
+plus a compact projection/Poisson hyperparameter sweep. These runs are not
+test results until one configuration has been selected on the tuning split.
 
 ### Reproducibility
 
