@@ -427,6 +427,23 @@ temporal-delta-MAE from 5.7495 to approximately 5.5900. Thus the current
 refiner provides temporal smoothing but does not improve BasicVSR++ spatial
 fidelity; it should not be described as a spatially superior replacement.
 
+The public BasicVSR++ per-clip non-anchor PSNR values were:
+
+| Clip | Bicubic | BasicVSR++ | Gain |
+|---|---:|---:|---:|
+| 000 | 30.2596 | 33.0165 | +2.7569 |
+| 007 | 31.1702 | 33.8835 | +2.7133 |
+| 013 | 28.7032 | 31.0868 | +2.3836 |
+| 015 | 27.6460 | 29.4553 | +1.8092 |
+| 017 | 28.8063 | 30.5882 | +1.7819 |
+| 020 | 30.3643 | 32.3661 | +2.0017 |
+
+The BasicVSR++ network has 7,322,927 trainable parameters and its public
+checkpoint is approximately 28 MB. The MCFT checkpoints remain compact (the
+large public refinement checkpoint is approximately 3.5 MB); wall-clock and
+peak-GPU-memory measurements are hardware- and tile-size-dependent and should
+be reported alongside any deployment claim rather than inferred from file size.
+
 ### Classical transfer baseline (E5)
 
 As a low-complexity baseline, the legacy motion-frequency script was run in
