@@ -71,6 +71,17 @@ class BlendTest(unittest.TestCase):
         self.assertEqual(tuple(result.shape), (2, 3, 10, 12))
         self.assertTrue(bool(torch.isfinite(result).all()))
 
+    def test_bicubic_operator_agrees_with_opencv_within_tolerance(self):
+        rng = np.random.default_rng(11)
+        image = rng.random((23, 31, 3), dtype=np.float32)
+        cv_result = cv2.resize(image, (13, 10), interpolation=cv2.INTER_CUBIC)
+        tensor = torch.from_numpy(image).permute(2, 0, 1)[None]
+        torch_result = observation_downsample(tensor, 'bicubic', (10, 13))[0]
+        torch_result = torch_result.permute(1, 2, 0).numpy()
+        delta = np.abs(cv_result - torch_result)
+        self.assertLess(float(delta.mean()), 0.01)
+        self.assertLess(float(delta.max()), 0.08)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

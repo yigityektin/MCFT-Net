@@ -22,3 +22,5 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Inference helper regression tests
         run: python -m unittest discover -s tests -v
+      - name: Repository regression tests
+        run: python -m unittest discover -s . -p 'test_*.py' -v
