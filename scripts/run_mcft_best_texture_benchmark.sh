@@ -3,6 +3,7 @@ set -euo pipefail
 
 PYTHON_BIN="${PYTHON_BIN:-.venv-hat/bin/python}"
 TORCH_PYTHON="${TORCH_PYTHON:-.venv-hat/bin/python}"
+DEVICE="${DEVICE:-cpu}"
 ROOT="${REDS_VAL4_ROOT:-external_benchmarks/REDS-Val4}"
 MODEL="${MODEL:-mcft_net_confidence_mixed_replay_ssim_500_texture.pth}"
 METHOD="${METHOD:-best_texture}"
@@ -62,7 +63,7 @@ for CLIP in "${CLIPS[@]}"; do
       --anchors "$DIR/anchors_10pct.json" \
       --output "$OUT" \
       --tile 0 \
-      --device cpu
+      --device "$DEVICE"
   fi
 
   "$PYTHON_BIN" evaluate_against_ground_truth.py \
