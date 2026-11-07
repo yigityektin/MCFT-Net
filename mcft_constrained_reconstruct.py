@@ -209,7 +209,8 @@ def read_base_frame(base_cap, lr_frame, index, width, height):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--ground-truth',required=True); p.add_argument('--anchors',required=True)
+    p.add_argument('--ground-truth', help='Optional GT video; required only for GT-dependent diagnostics.')
+    p.add_argument('--anchors',required=True)
     p.add_argument('--low-resolution', help='Actual LR video. If omitted, LR is simulated losslessly from ground truth.')
     p.add_argument('--base-video', help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.')
     p.add_argument('--output-video', help='Write a complete MCFT video (anchors are copied from the anchor source).')
@@ -229,15 +230,26 @@ def main():
     p.add_argument('--no-diagnostics', action='store_true',
                    help='Do not compute or print GT-dependent quality/optimal-scale diagnostics.')
     args=p.parse_args(); manifest=json.loads(Path(args.anchors).read_text()); anchors=sorted(map(int,manifest['anchor_indices']))
+    if not args.ground_truth and not args.anchor_source_video:
+        raise ValueError('--anchor-source-video is required when --ground-truth is omitted')
+    if not args.ground_truth and not args.no_diagnostics:
+        raise ValueError('--no-diagnostics is required when --ground-truth is omitted')
     degradation=json.loads(Path(args.degradation_model).read_text()) if args.degradation_model else None
-    cap=cv2.VideoCapture(args.ground_truth); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); aset=set(anchors)
+    cap=cv2.VideoCapture(args.ground_truth) if args.ground_truth else None
+    if cap is not None and not cap.isOpened(): raise RuntimeError(f'Could not open ground truth {args.ground_truth}')
+    n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if cap is not None else 0; aset=set(anchors)
     anchor_source_cap=cv2.VideoCapture(args.anchor_source_video) if args.anchor_source_video else cap
     if args.anchor_source_video and not anchor_source_cap.isOpened():
         raise RuntimeError(f'Could not open anchor source video {args.anchor_source_video}')
+    if cap is None and not args.low_resolution:
+        raise ValueError('--low-resolution is required when --ground-truth is omitted')
+    if cap is None: n=int(anchor_source_cap.get(cv2.CAP_PROP_FRAME_COUNT))
     lr_cap=cv2.VideoCapture(args.low_resolution) if args.low_resolution else None
+    if lr_cap is not None and not lr_cap.isOpened(): raise RuntimeError(f'Could not open LR video {args.low_resolution}')
     base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
     if args.base_video and not base_cap.isOpened(): raise RuntimeError(f'Could not open base video {args.base_video}')
-    fps=cap.get(cv2.CAP_PROP_FPS); H=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    source_cap=cap if cap is not None else anchor_source_cap
+    fps=source_cap.get(cv2.CAP_PROP_FPS); H=int(source_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(source_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     # Anchors are reused many times; cache them once instead of repeatedly seeking
     # through the compressed source video.
     anchor_cache={index:read_at(anchor_source_cap,index) for index in anchors}
@@ -263,7 +275,7 @@ def main():
     else:
         targets=[i for i in range(0,n,args.stride) if i not in aset][:args.max_frames]
     for k,i in enumerate(targets):
-        gt=read_at(cap,i)
+        gt=read_at(cap,i) if cap is not None else None
         if i in aset and writer:
             writer.write(anchor_cache[i])
             print(f'[{k+1}/{len(targets)}] frame {i} anchor')
@@ -341,7 +353,7 @@ def main():
             cv2.imwrite(str(out/f'{i:04d}_mcft.png'),result)
         if writer: writer.write(result)
         print(f'[{k+1}/{len(targets)}] frame {i}')
-    cap.release()
+    if cap is not None: cap.release()
     if args.anchor_source_video: anchor_source_cap.release()
     if lr_cap: lr_cap.release()
     if base_cap: base_cap.release()

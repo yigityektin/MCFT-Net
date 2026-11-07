@@ -168,7 +168,10 @@ def gradient_loss(a,b):
 
 
 def device_for(name):
-    if name=='auto':return torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    if name=='auto':
+        if torch.cuda.is_available(): return torch.device('cuda')
+        if torch.backends.mps.is_available(): return torch.device('mps')
+        return torch.device('cpu')
     return torch.device(name)
 
 
@@ -225,6 +228,10 @@ def tiled(model,feature,device,tile,overlap):
 
 
 def infer(args):
+    if args.tile < 0 or args.overlap < 0 or (args.tile > 0 and args.overlap >= args.tile):
+        raise ValueError('Require tile >= 0, overlap >= 0, and overlap < tile when tiled')
+    if not 0.0 <= args.blend_alpha <= 1.0:
+        raise ValueError('blend-alpha must be between 0 and 1')
     device=device_for(args.device);checkpoint=torch.load(args.model,map_location=device,weights_only=True);model=build_model(checkpoint.get('architecture','legacy'),checkpoint['width'],checkpoint['blocks']).to(device);model.load_state_dict(checkpoint['state']);model.eval()
     anchors=sorted(json.loads(Path(args.anchors).read_text())['anchor_indices'])
     if args.anchor_mode == 'none': anchors=[]
@@ -232,10 +239,12 @@ def infer(args):
     aset=set(anchors);candidate=cv2.VideoCapture(args.candidate);lr=cv2.VideoCapture(args.low_resolution)
     base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
     if args.base_video and not base_cap.isOpened():raise RuntimeError(f'Could not open base video {args.base_video}')
+    if not candidate.isOpened() or not lr.isOpened(): raise RuntimeError('Could not open candidate or low-resolution video')
     n=int(candidate.get(cv2.CAP_PROP_FRAME_COUNT));n=min(n,args.max_frames) if args.max_frames else n;w=int(candidate.get(cv2.CAP_PROP_FRAME_WIDTH));h=int(candidate.get(cv2.CAP_PROP_FRAME_HEIGHT));fps=candidate.get(cv2.CAP_PROP_FPS);writer=cv2.VideoWriter(args.output,cv2.VideoWriter_fourcc(*'FFV1'),fps,(w,h))
+    if not writer.isOpened(): raise RuntimeError(f'Could not open output video {args.output}')
     if args.tile<=0 and args.infer_batch_size>1:
         for start in range(0,n,args.infer_batch_size):
-            records=[];features=[];slots=[]
+            records=[];features=[];bases=[];slots=[]
             for index in range(start,min(start+args.infer_batch_size,n)):
                 ok,c=candidate.read();okl,l=lr.read()
                 if not(ok and okl):raise RuntimeError(index)
@@ -245,11 +254,13 @@ def infer(args):
                     feature_candidate = base if args.anchor_mode == 'none' else c
                     feature=(make_confidence_input(base,feature_candidate,l,index,anchors)
                              if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
-                    features.append(feature);slots.append(index-start)
+                    features.append(feature);bases.append(base);slots.append(index-start)
             if features:
                 tensor=torch.from_numpy(np.stack(features)).permute(0,3,1,2).float().to(device)
                 with torch.inference_mode():batch=model(tensor,tensor[:,:3]).permute(0,2,3,1).cpu().numpy()
-                for slot,out in zip(slots,batch):records[slot]=np.clip(out*255,0,255).astype(np.uint8)
+                for slot,out,base in zip(slots,batch,bases):
+                    prediction=np.clip(out*255,0,255).astype(np.float32)
+                    records[slot]=np.clip(base.astype(np.float32)+args.blend_alpha*(prediction-base.astype(np.float32)),0,255).astype(np.uint8)
             for offset,frame in enumerate(records):
                 writer.write(frame);print(f'[{start+offset+1}/{n}]')
         candidate.release();lr.release();writer.release()

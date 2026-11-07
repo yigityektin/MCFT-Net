@@ -42,7 +42,7 @@ For the REDS benchmark runs in this repository:
 
 ```text
 scale: x2
-degradation: OpenCV `INTER_AREA` downsample (x2)
+degradation: public REDS bicubic protocol (`INTER_CUBIC` downsample, x2)
 anchor budget: 10% true HR frames
 anchor policy: uniform anchors
 primary evaluation split: non-anchor frames
@@ -710,14 +710,21 @@ python scripts/smoke_test.py \
 This is still a short model sanity check, not a substitute for end-to-end
 video inference and non-anchor metric evaluation.
 
+For deployment, `mcft_constrained_reconstruct.py` does not require ground
+truth: provide `--low-resolution`, `--anchor-source-video`, `--anchors`, and
+`--no-diagnostics`. Ground truth is only used for optional evaluation and
+diagnostics. In `mcft_net.py`, `--device auto` selects CUDA first, then Apple
+Metal (MPS), then CPU; tiled inference requires `0 <= overlap < tile`.
+
 `ffmpeg` is required for video encoding/decoding workflows and should be
 installed separately.
 
 ## Reproduce The Frozen Benchmark
 
 Train an MCFT-Net checkpoint first, or pass an existing local checkpoint with
-`MODEL=/path/to/checkpoint.pth`. Model weights are generated artifacts and are
-not committed to this repository.
+`MODEL=/path/to/checkpoint.pth`. Selected public checkpoints are available in
+the Hugging Face model repository; generated experiment weights need not be
+committed to Git.
 
 Run the frozen benchmark on any prepared or fresh REDS validation clip IDs:
 
@@ -793,10 +800,12 @@ configuration. Do not commit Hugging Face tokens.
 
 ## Artifact Policy
 
-Source code and small manifests belong in Git. Large checkpoints, generated
-videos, extracted datasets, and benchmark dumps are external artifacts. Their
-paths and provenance are recorded here, while the binaries should be
-distributed through Hugging Face, GitHub Releases, or project storage.
+Source code, small manifests, benchmark CSVs, and selected small/public
+checkpoints belong in Git when practical. The Hugging Face model repository is
+the canonical binary archive for checkpoints (including the BasicVSR++ and
+SpyNet weights); generated videos and extracted datasets remain external
+artifacts. Historical exploratory checkpoints may exist only in Hugging Face
+or local experiment folders.
 
 ## Final MCFT-Net checkpoint
 

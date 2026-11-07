@@ -39,7 +39,7 @@ def writer(path: Path, fps: float, size: tuple[int, int]) -> cv2.VideoWriter:
     return result
 
 
-def prepare(root: Path, clips: list[str], fps: float) -> None:
+def prepare(root: Path, clips: list[str], fps: float, degradation: str) -> None:
     for clip in clips:
         directory = root / clip
         frames = sorted((directory / "gt_frames").glob("*.png"))
@@ -52,7 +52,8 @@ def prepare(root: Path, clips: list[str], fps: float) -> None:
         bic_out = writer(directory / "bicubic_x2.mkv", fps, (w, h))
         for frame_path in frames:
             gt = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
-            lr = cv2.resize(gt, (w // 2, h // 2), interpolation=cv2.INTER_CUBIC)
+            kernel = cv2.INTER_CUBIC if degradation == "bicubic" else cv2.INTER_AREA
+            lr = cv2.resize(gt, (w // 2, h // 2), interpolation=kernel)
             bicubic = cv2.resize(lr, (w, h), interpolation=cv2.INTER_CUBIC)
             gt_out.write(gt); lr_out.write(lr); bic_out.write(bicubic)
         gt_out.release(); lr_out.release(); bic_out.release()
@@ -62,7 +63,7 @@ def prepare(root: Path, clips: list[str], fps: float) -> None:
             "dataset": "official_REDS_validation_sharp",
             "clip": clip,
             "scale": 2,
-            "degradation": "opencv_bicubic_downsample",
+            "degradation": f"opencv_{degradation}_downsample",
             "total_frames": len(frames),
             "anchor_indices": anchors,
         }
@@ -76,9 +77,11 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path("external_benchmarks/REDS-Val4"))
     parser.add_argument("--clips", nargs="+", default=["000", "001", "006", "017"])
     parser.add_argument("--fps", type=float, default=24.0)
+    parser.add_argument("--degradation", choices=("bicubic", "area"), default="bicubic",
+                        help="Downsampling kernel; public REDS bicubic uses the default.")
     args = parser.parse_args()
     extract(args.url, args.root, args.clips)
-    prepare(args.root, args.clips, args.fps)
+    prepare(args.root, args.clips, args.fps, args.degradation)
 
 
 if __name__ == "__main__":
