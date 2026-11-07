@@ -11,7 +11,8 @@ from motion_frequency_transfer import compute_flow, flow_confidence, remap_with_
 def local_subpixel_refine(target: np.ndarray, warped: np.ndarray, confidence: np.ndarray,
                           patch: int = 128, stride: int = 64,
                           max_shift: float = 2.0, min_response: float = 0.08):
-    h, w = target.shape; win = cv2.createHanningWindow((patch, patch), cv2.CV_32F)
+    h, w = target.shape; patch = min(patch, h, w); stride = min(stride, patch)
+    win = cv2.createHanningWindow((patch, patch), cv2.CV_32F)
     accum = np.zeros_like(target, np.float32); weights = np.zeros_like(target, np.float32)
     refined_conf = np.zeros_like(target, np.float32)
     ys = list(range(0, h-patch+1, stride)); xs = list(range(0, w-patch+1, stride))
@@ -40,7 +41,8 @@ def local_subpixel_refine(target: np.ndarray, warped: np.ndarray, confidence: np
 def local_affine_refine(target: np.ndarray, warped: np.ndarray, confidence: np.ndarray,
                         patch: int = 128, stride: int = 64):
     """Locally refine flow-warped patches with conservative affine ECC."""
-    h,w=target.shape; win=cv2.createHanningWindow((patch,patch),cv2.CV_32F)
+    h,w=target.shape; patch=min(patch,h,w); stride=min(stride,patch)
+    win=cv2.createHanningWindow((patch,patch),cv2.CV_32F)
     accum=np.zeros_like(target,np.float32); weights=np.zeros_like(target,np.float32)
     conf_accum=np.zeros_like(target,np.float32)
     ys=list(range(0,h-patch+1,stride)); xs=list(range(0,w-patch+1,stride))
@@ -215,6 +217,7 @@ def main():
     p.add_argument('--base-video', help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.')
     p.add_argument('--output-video', help='Write a complete MCFT video (anchors are copied from the anchor source).')
     p.add_argument('--anchor-source-video', help='Optional video supplying the HR anchor pixels. Defaults to --ground-truth.')
+    p.add_argument('--anchor-dir', help='Directory of anchor PNGs named frame_0000.png (or zero-padded variants).')
     p.add_argument('--save-frames', action='store_true', help='Save lossless GT/bicubic/MCFT PNG triplets.')
     p.add_argument('--output-dir',default='constrained_mcft'); p.add_argument('--stride',type=int,default=10)
     p.add_argument('--max-frames',type=int,default=30); p.add_argument('--lambda-gradient',type=float,default=.35)
@@ -230,8 +233,8 @@ def main():
     p.add_argument('--no-diagnostics', action='store_true',
                    help='Do not compute or print GT-dependent quality/optimal-scale diagnostics.')
     args=p.parse_args(); manifest=json.loads(Path(args.anchors).read_text()); anchors=sorted(map(int,manifest['anchor_indices']))
-    if not args.ground_truth and not args.anchor_source_video:
-        raise ValueError('--anchor-source-video is required when --ground-truth is omitted')
+    if not args.ground_truth and not (args.anchor_source_video or args.anchor_dir):
+        raise ValueError('--anchor-source-video or --anchor-dir is required when --ground-truth is omitted')
     if not args.ground_truth and not args.no_diagnostics:
         raise ValueError('--no-diagnostics is required when --ground-truth is omitted')
     degradation=json.loads(Path(args.degradation_model).read_text()) if args.degradation_model else None
@@ -243,16 +246,27 @@ def main():
         raise RuntimeError(f'Could not open anchor source video {args.anchor_source_video}')
     if cap is None and not args.low_resolution:
         raise ValueError('--low-resolution is required when --ground-truth is omitted')
-    if cap is None: n=int(anchor_source_cap.get(cv2.CAP_PROP_FRAME_COUNT))
     lr_cap=cv2.VideoCapture(args.low_resolution) if args.low_resolution else None
     if lr_cap is not None and not lr_cap.isOpened(): raise RuntimeError(f'Could not open LR video {args.low_resolution}')
+    if cap is None: n=int(anchor_source_cap.get(cv2.CAP_PROP_FRAME_COUNT)) if anchor_source_cap is not None else int(lr_cap.get(cv2.CAP_PROP_FRAME_COUNT))
     base_cap=cv2.VideoCapture(args.base_video) if args.base_video else None
     if args.base_video and not base_cap.isOpened(): raise RuntimeError(f'Could not open base video {args.base_video}')
     source_cap=cap if cap is not None else anchor_source_cap
-    fps=source_cap.get(cv2.CAP_PROP_FPS); H=int(source_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(source_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    if source_cap is None:
+        first_lr=read_at(lr_cap,0); H,W=first_lr.shape[0]*2,first_lr.shape[1]*2; fps=lr_cap.get(cv2.CAP_PROP_FPS)
+    else:
+        fps=source_cap.get(cv2.CAP_PROP_FPS); H=int(source_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); W=int(source_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     # Anchors are reused many times; cache them once instead of repeatedly seeking
     # through the compressed source video.
-    anchor_cache={index:read_at(anchor_source_cap,index) for index in anchors}
+    def anchor_png(index):
+        directory=Path(args.anchor_dir)
+        candidates=[directory/f'frame_{index:08d}.png',directory/f'frame_{index:04d}.png',directory/f'{index:08d}.png',directory/f'{index:04d}.png']
+        for path in candidates:
+            if path.exists():
+                frame=cv2.imread(str(path),cv2.IMREAD_COLOR)
+                if frame is not None:return frame
+        raise RuntimeError(f'Cannot find anchor PNG for frame {index} in {directory}')
+    anchor_cache={index:(anchor_png(index) if args.anchor_dir else read_at(anchor_source_cap,index)) for index in anchors}
     for index, frame in anchor_cache.items():
         if frame.shape[:2] != (H, W):
             raise RuntimeError(f'Anchor source frame {index} has shape {frame.shape[:2]}, expected {(H, W)}')

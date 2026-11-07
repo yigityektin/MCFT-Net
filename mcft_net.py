@@ -98,11 +98,12 @@ def make_input(base,candidate,index,anchors):
     return np.concatenate([b,c,delta,distance_map(index,anchors,*b.shape[:2])],axis=2)
 
 
-def make_confidence_input(base,candidate,lr,index,anchors):
+def make_confidence_input(base,candidate,lr,index,anchors,degradation='area'):
     feature=make_input(base,candidate,index,anchors)
     h,w=base.shape[:2]
     observed=lr.astype(np.float32)/255
-    predicted=cv2.resize(candidate.astype(np.float32)/255,(lr.shape[1],lr.shape[0]),interpolation=cv2.INTER_AREA)
+    kernel=cv2.INTER_CUBIC if degradation=='bicubic' else cv2.INTER_AREA
+    predicted=cv2.resize(candidate.astype(np.float32)/255,(lr.shape[1],lr.shape[0]),interpolation=kernel)
     observation=np.mean(np.abs(predicted-observed),axis=2,keepdims=True)
     observation=cv2.resize(observation,(w,h),interpolation=cv2.INTER_LINEAR)[...,None]
     by=cv2.cvtColor(base,cv2.COLOR_BGR2GRAY).astype(np.float32)/255
@@ -133,7 +134,7 @@ class PatchDataset(Dataset):
         return x,y,lr
 
 
-def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy',base_path=None,anchor_mode='true'):
+def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_frames=0,architecture='legacy',base_path=None,anchor_mode='true',degradation='area'):
     anchors=sorted(json.loads(Path(anchor_path).read_text())['anchor_indices']);aset=set(anchors)
     if anchor_mode == 'none':
         anchors=[]; aset=set()
@@ -150,7 +151,7 @@ def collect(gt_path,lr_path,candidate_path,anchor_path,patch,per_frame,seed,max_
         if index not in aset:
             base=read_base_frame(base_cap,lr,index,gt.shape[1],gt.shape[0])
             feature_candidate = base if anchor_mode == 'none' else candidate
-            feature=(make_confidence_input(base,feature_candidate,lr,index,anchors)
+            feature=(make_confidence_input(base,feature_candidate,lr,index,anchors,degradation)
                      if architecture=='confidence' else make_input(base,feature_candidate,index,anchors))
             for _ in range(per_frame):
                 x=int(rng.integers(0,(gt.shape[1]-patch)//2+1))*2;y=int(rng.integers(0,(gt.shape[0]-patch)//2+1))*2
@@ -177,8 +178,8 @@ def device_for(name):
 
 def train(args):
     torch.manual_seed(7);random.seed(7);device=device_for(args.device)
-    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture,args.train_base,args.anchor_mode)
-    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture,args.val_base,args.anchor_mode)
+    trainset=collect(args.train_gt,args.train_lr,args.train_candidate,args.train_anchors,args.patch,args.patches_per_frame,7,args.max_train_frames,args.architecture,args.train_base,args.anchor_mode,args.degradation)
+    valset=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.architecture,args.val_base,args.anchor_mode,args.degradation)
     loader=DataLoader(trainset,batch_size=args.batch_size,shuffle=True,num_workers=0);vloader=DataLoader(valset,batch_size=args.batch_size,shuffle=False,num_workers=0)
     model=build_model(args.architecture,args.width,args.blocks).to(device);optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4)
     best=float('inf')
@@ -187,7 +188,9 @@ def train(args):
         for x,y,lr in loader:
             x=x.to(device);y=y.to(device);lr=lr.to(device);base=x[:,:3]
             prediction=model(x,base);charb=torch.mean(torch.sqrt((prediction-y)**2+1e-6))
-            grad=gradient_loss(prediction,y);observation=torch.mean(torch.abs(torch.nn.functional.avg_pool2d(prediction,2)-lr))
+            grad=gradient_loss(prediction,y)
+            observed_prediction=torch.nn.functional.interpolate(prediction,size=lr.shape[-2:],mode='bicubic',align_corners=False) if args.degradation=='bicubic' else torch.nn.functional.avg_pool2d(prediction,2)
+            observation=torch.mean(torch.abs(observed_prediction-lr))
             protected=x[:,3:6] if args.architecture in ('protected','confidence') else base
             residual=torch.mean(torch.abs(prediction-protected))
             # A patch guard discourages corrections whose mean error is worse
@@ -205,7 +208,7 @@ def train(args):
                 x=x.to(device);y=y.to(device);prediction=model(x,x[:,:3]);validation+=float(torch.mean(torch.abs(prediction-y)))*len(x)
         validation/=len(valset);print('epoch',epoch+1,'train',running/len(trainset),'val_l1',validation)
         if validation<best:
-            best=validation;torch.save({'state':model.state_dict(),'width':args.width,'blocks':args.blocks,'architecture':args.architecture,'anchor_mode':args.anchor_mode,'val_l1':best},args.output)
+            best=validation;torch.save({'state':model.state_dict(),'width':args.width,'blocks':args.blocks,'architecture':args.architecture,'anchor_mode':args.anchor_mode,'degradation':args.degradation,'val_l1':best},args.output)
 
 
 def tiled(model,feature,device,tile,overlap):
@@ -214,6 +217,7 @@ def tiled(model,feature,device,tile,overlap):
         with torch.inference_mode():
             tensor=torch.from_numpy(feature).permute(2,0,1)[None].float().to(device)
             return np.clip(model(tensor,tensor[:,:3])[0].permute(1,2,0).cpu().numpy()*255,0,255).astype(np.uint8)
+    tile=min(tile,h,w); overlap=min(overlap,max(tile-1,0)); step=max(1,tile-overlap)
     ys=list(range(0,max(h-tile,0)+1,step));xs=list(range(0,max(w-tile,0)+1,step))
     if not ys or ys[-1]!=h-tile:ys.append(max(h-tile,0))
     if not xs or xs[-1]!=w-tile:xs.append(max(w-tile,0))
@@ -239,7 +243,7 @@ def infer(args):
         raise ValueError('Require tile >= 0, overlap >= 0, and overlap < tile when tiled')
     if not 0.0 <= args.blend_alpha <= 1.0:
         raise ValueError('blend-alpha must be between 0 and 1')
-    device=device_for(args.device);checkpoint=torch.load(args.model,map_location=device,weights_only=True);model=build_model(checkpoint.get('architecture','legacy'),checkpoint['width'],checkpoint['blocks']).to(device);model.load_state_dict(checkpoint['state']);model.eval()
+    device=device_for(args.device);checkpoint=torch.load(args.model,map_location=device,weights_only=True);model=build_model(checkpoint.get('architecture','legacy'),checkpoint['width'],checkpoint['blocks']).to(device);model.load_state_dict(checkpoint['state']);model.eval(); degradation=checkpoint.get('degradation',args.degradation)
     anchors=sorted(json.loads(Path(args.anchors).read_text())['anchor_indices'])
     if args.anchor_mode == 'none': anchors=[]
     elif args.anchor_mode != 'true': raise ValueError(f'Unknown anchor mode: {args.anchor_mode}')
@@ -259,7 +263,7 @@ def infer(args):
                 if index not in aset:
                     base=read_base_frame(base_cap,l,index,w,h)
                     feature_candidate = base if args.anchor_mode == 'none' else c
-                    feature=(make_confidence_input(base,feature_candidate,l,index,anchors)
+                    feature=(make_confidence_input(base,feature_candidate,l,index,anchors,degradation)
                              if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
                     features.append(feature);bases.append(base);slots.append(index-start)
             if features:
@@ -279,7 +283,7 @@ def infer(args):
         if index not in aset:
             base=read_base_frame(base_cap,l,index,w,h)
             feature_candidate = base if args.anchor_mode == 'none' else c
-            feature=(make_confidence_input(base,feature_candidate,l,index,anchors)
+            feature=(make_confidence_input(base,feature_candidate,l,index,anchors,degradation)
                      if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
             base_frame=base
             c=tiled(model,feature,device,args.tile,args.overlap)
@@ -295,8 +299,8 @@ def main():
     for prefix in ('train','val'):
         for name in ('gt','lr','candidate','anchors'):t.add_argument(f'--{prefix}-{name}',required=True)
         t.add_argument(f'--{prefix}-base',help='Optional HR-size SR/base-prior video for modern-base training.')
-    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--anchor-mode',choices=('true','none'),default='true');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--guard-weight',type=float,default=0.25);t.add_argument('--residual-weight',type=float,default=0.005);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
-    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--anchor-mode',choices=('true','none'),default='true');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--blend-alpha',type=float,default=1.0,help='Blend model output with HR base: base + alpha*(prediction-base)');i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
+    t.add_argument('--output',required=True);t.add_argument('--patch',type=int,default=96);t.add_argument('--patches-per-frame',type=int,default=6);t.add_argument('--val-patches-per-frame',type=int,default=2);t.add_argument('--epochs',type=int,default=8);t.add_argument('--batch-size',type=int,default=8);t.add_argument('--width',type=int,default=32);t.add_argument('--blocks',type=int,default=6);t.add_argument('--architecture',choices=('legacy','spatial','protected','confidence'),default='legacy');t.add_argument('--anchor-mode',choices=('true','none'),default='true');t.add_argument('--degradation',choices=('area','bicubic'),default='area');t.add_argument('--lr',type=float,default=2e-4);t.add_argument('--guard-weight',type=float,default=0.25);t.add_argument('--residual-weight',type=float,default=0.005);t.add_argument('--device',default='auto');t.add_argument('--max-train-frames',type=int,default=0);t.add_argument('--max-val-frames',type=int,default=0)
+    i=sub.add_parser('infer');i.add_argument('--model',required=True);i.add_argument('--candidate',required=True);i.add_argument('--low-resolution',required=True);i.add_argument('--anchors',required=True);i.add_argument('--output',required=True);i.add_argument('--base-video',help='Optional HR-size SR/base-prior video. Defaults to bicubic upsampling of LR.');i.add_argument('--anchor-mode',choices=('true','none'),default='true');i.add_argument('--degradation',choices=('area','bicubic'),default='area');i.add_argument('--tile',type=int,default=256,help='Tile size; 0 runs the full frame at once');i.add_argument('--overlap',type=int,default=32);i.add_argument('--blend-alpha',type=float,default=1.0,help='Blend model output with HR base: base + alpha*(prediction-base)');i.add_argument('--device',default='auto');i.add_argument('--max-frames',type=int,default=0,help='Optional inference smoke-test limit');i.add_argument('--infer-batch-size',type=int,default=1,help='Full-frame inference batch size (tile must be 0)')
     args=p.parse_args();train(args) if args.command=='train' else infer(args)
 
 

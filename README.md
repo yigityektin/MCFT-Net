@@ -48,6 +48,11 @@ anchor policy: uniform anchors
 primary evaluation split: non-anchor frames
 ```
 
+The learned confidence feature and observation loss use the same operator as
+the declared degradation. New public REDS training/inference runs should pass
+`--degradation bicubic`; the default `area` mode is retained for compatibility
+with older area-trained checkpoints.
+
 Non-anchor frames are the important part of the benchmark. Anchor frames are
 copied from true HR by design, so reporting non-anchor averages avoids inflating
 the result with frames that are already known.
@@ -715,6 +720,9 @@ truth: provide `--low-resolution`, `--anchor-source-video`, `--anchors`, and
 `--no-diagnostics`. Ground truth is only used for optional evaluation and
 diagnostics. In `mcft_net.py`, `--device auto` selects CUDA first, then Apple
 Metal (MPS), then CPU; tiled inference requires `0 <= overlap < tile`.
+When anchors are individual PNGs rather than a complete reference video, use
+`--anchor-dir anchors/`; files may be named `frame_00000011.png`,
+`frame_0011.png`, or `00000011.png` according to the manifest indices.
 
 `ffmpeg` is required for video encoding/decoding workflows and should be
 installed separately.

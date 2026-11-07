@@ -16,3 +16,7 @@ jobs:
         run: python -m compileall -q mcft_net.py mcft_constrained_reconstruct.py motion_frequency_transfer.py prepare_reds_val4.py scripts
       - name: Structural smoke test
         run: python scripts/smoke_test.py
+      - name: Install inference test dependencies
+        run: python -m pip install numpy opencv-python torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Inference helper regression tests
+        run: python -m unittest discover -s tests -v
