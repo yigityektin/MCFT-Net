@@ -1,0 +1,3 @@
+method,psnr_y,ssim_y,edge_mae,temporal_delta_mae
+swinir,25.098546,0.838578,44.225417,12.684290
+swinir_mcft,29.096812,0.899579,25.819191,8.319682

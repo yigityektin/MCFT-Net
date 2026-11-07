@@ -1,0 +1,13 @@
+method,metric,mean,frames
+replay,psnr_y,35.641192185046386,360
+replay,ssim_y,0.9624858015593978,360
+replay,edge_mae,11.803382269541423,360
+replay,temporal_delta_mae,3.5016561458508173,360
+constrained,psnr_y,33.186342113028,360
+constrained,ssim_y,0.944653335628103,360
+constrained,edge_mae,16.351080595122443,360
+constrained,temporal_delta_mae,4.621157941553328,360
+bicubic,psnr_y,32.745353820931946,360
+bicubic,ssim_y,0.9366831154051843,360
+bicubic,edge_mae,17.396012536684673,360
+bicubic,temporal_delta_mae,5.007307928138309,360

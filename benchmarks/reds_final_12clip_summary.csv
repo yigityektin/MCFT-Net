@@ -1,0 +1,6 @@
+group,clips,method,psnr_y,ssim_y,edge_mae,temporal_delta_mae
+new_8,8,realesrgan,27.559380,0.834653,30.527206,8.862232
+new_8,8,realesrgan_mcft,31.465620,0.926155,19.456148,5.995000
+new_12,12,realesrgan,28.028885,0.848617,28.497310,8.396862
+new_12,12,realesrgan_mcft,32.082518,0.932485,17.939385,5.553353
+new_12,12,mcft_gain,4.053633,0.083867,-10.557925,-2.843509
