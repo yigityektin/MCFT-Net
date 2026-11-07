@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, IterableDataset
 
-from mcft_net import build_model, device_for, gradient_loss, make_confidence_input
+from mcft_net import build_model, device_for, gradient_loss, make_confidence_input, observation_downsample
 from motion_frequency_transfer import compute_flow, flow_confidence, remap_with_displacement
 
 
@@ -30,13 +30,14 @@ def _bgr(image) -> np.ndarray:
     return np.ascontiguousarray(rgb[..., ::-1])
 
 
-def degrade_x2(frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return bicubic x2 LR observation and its bicubic HR baseline."""
+def degrade_x2(frame: np.ndarray, degradation="bicubic") -> tuple[np.ndarray, np.ndarray]:
+    """Return an x2 LR observation and HR baseline using the declared kernel."""
     h, w = frame.shape[:2]
     h -= h % 2
     w -= w % 2
     frame = frame[:h, :w]
-    lr = cv2.resize(frame, (w // 2, h // 2), interpolation=cv2.INTER_CUBIC)
+    kernel = cv2.INTER_CUBIC if degradation == "bicubic" else cv2.INTER_AREA
+    lr = cv2.resize(frame, (w // 2, h // 2), interpolation=kernel)
     base = cv2.resize(lr, (w, h), interpolation=cv2.INTER_CUBIC)
     return lr, base
 
@@ -46,7 +47,7 @@ def _anchor_detail(anchor: np.ndarray, anchor_base: np.ndarray, sigma: float) ->
     return delta - cv2.GaussianBlur(delta, (0, 0), sigma)
 
 
-def make_triplet_example(images, flow_method="dis", strength=0.5, detail_sigma=0.8):
+def make_triplet_example(images, flow_method="dis", strength=0.5, detail_sigma=0.8, degradation="bicubic"):
     """Build (network feature, GT, LR, proposal) for one Vimeo triplet."""
     frames = [_bgr(image) if not isinstance(image, np.ndarray) else image for image in images]
     h = min(frame.shape[0] for frame in frames)
@@ -54,7 +55,7 @@ def make_triplet_example(images, flow_method="dis", strength=0.5, detail_sigma=0
     h -= h % 2
     w -= w % 2
     frames = [np.ascontiguousarray(frame[:h, :w, :3], dtype=np.uint8) for frame in frames]
-    degraded = [degrade_x2(frame) for frame in frames]
+    degraded = [degrade_x2(frame, degradation) for frame in frames]
     lrs = [item[0] for item in degraded]
     bases = [item[1] for item in degraded]
     target_lr, target_base = lrs[1], bases[1]
@@ -76,13 +77,14 @@ def make_triplet_example(images, flow_method="dis", strength=0.5, detail_sigma=0
     proposal = target_base.astype(np.float32)
     proposal += float(strength) * accumulated / np.maximum(total_weight, 1e-3)
     proposal = np.clip(proposal, 0, 255).astype(np.uint8)
-    feature = make_confidence_input(target_base, proposal, target_lr, 1, ANCHORS)
+    feature = make_confidence_input(target_base, proposal, target_lr, 1, ANCHORS, degradation)
     return feature, frames[1], target_lr, proposal
 
 
 class VimeoMCFTStream(IterableDataset):
     def __init__(self, split, max_triplets, patches_per_triplet, patch, seed,
-                 shuffle_buffer=512, flow_method="dis", proposal_strength=0.5):
+                 shuffle_buffer=512, flow_method="dis", proposal_strength=0.5,
+                 degradation="bicubic"):
         super().__init__()
         self.split = split
         self.max_triplets = max_triplets
@@ -92,6 +94,7 @@ class VimeoMCFTStream(IterableDataset):
         self.shuffle_buffer = shuffle_buffer
         self.flow_method = flow_method
         self.proposal_strength = proposal_strength
+        self.degradation = degradation
 
     def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         from datasets import load_dataset
@@ -105,7 +108,7 @@ class VimeoMCFTStream(IterableDataset):
                 break
             feature, target, lr, _ = make_triplet_example(
                 (row["im1"], row["im2"], row["im3"]),
-                self.flow_method, self.proposal_strength,
+                self.flow_method, self.proposal_strength, degradation=self.degradation,
             )
             h, w = target.shape[:2]
             if self.patch > min(h, w):
@@ -123,12 +126,12 @@ class VimeoMCFTStream(IterableDataset):
                 )
 
 
-def _loss(model, x, target, lr):
+def _loss(model, x, target, lr, degradation="bicubic"):
     base, protected = x[:, :3], x[:, 3:6]
     prediction = model(x, base)
     charb = torch.mean(torch.sqrt((prediction-target)**2+1e-6))
     grad = gradient_loss(prediction, target)
-    observation = torch.mean(torch.abs(torch.nn.functional.avg_pool2d(prediction, 2)-lr))
+    observation = torch.mean(torch.abs(observation_downsample(prediction, degradation, lr.shape[-2:])-lr))
     residual = torch.mean(torch.abs(prediction-protected))
     pred_patch = torch.mean(torch.abs(prediction-target), dim=(1, 2, 3))
     protected_patch = torch.mean(torch.abs(protected-target), dim=(1, 2, 3))
@@ -166,6 +169,7 @@ def train(args):
         train_data = VimeoMCFTStream(
             "train", args.train_triplets, args.patches_per_triplet, args.patch,
             args.seed+epoch, args.shuffle_buffer, args.flow_method, args.proposal_strength,
+            args.degradation,
         )
         loader = DataLoader(train_data, batch_size=args.batch_size, num_workers=0)
         model.train()
@@ -173,7 +177,7 @@ def train(args):
         count = 0
         for batch_index, (x, target, lr) in enumerate(loader, 1):
             x, target, lr = x.to(device), target.to(device), lr.to(device)
-            loss = _loss(model, x, target, lr)
+            loss = _loss(model, x, target, lr, args.degradation)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -191,7 +195,7 @@ def train(args):
             raise RuntimeError("training stream returned no samples")
         validation_data = VimeoMCFTStream(
             "test", args.val_triplets, args.val_patches_per_triplet, args.patch,
-            args.seed, 0, args.flow_method, args.proposal_strength,
+            args.seed, 0, args.flow_method, args.proposal_strength, args.degradation,
         )
         validation = _validate(
             model, DataLoader(validation_data, batch_size=args.batch_size, num_workers=0), device
@@ -209,7 +213,7 @@ def train(args):
 
 def smoke(args):
     data = VimeoMCFTStream(args.split, args.triplets, 1, args.patch, args.seed, 0,
-                           args.flow_method, args.proposal_strength)
+                           args.flow_method, args.proposal_strength, args.degradation)
     count = 0
     for x, target, lr in data:
         print("sample", count+1, "feature", tuple(x.shape), "target", tuple(target.shape),
@@ -226,6 +230,7 @@ def main():
     common.add_argument("--patch", type=int, default=96)
     common.add_argument("--flow-method", choices=("farneback", "dis"), default="dis")
     common.add_argument("--proposal-strength", type=float, default=0.5)
+    common.add_argument("--degradation", choices=("bicubic", "area"), default="bicubic")
     common.add_argument("--seed", type=int, default=7)
     check = sub.add_parser("smoke", parents=[common])
     check.add_argument("--split", choices=("train", "test"), default="test")

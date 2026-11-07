@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2,numpy as np,torch
 from torch import nn
 from torch.utils.data import ConcatDataset,DataLoader,Dataset
-from mcft_net import build_model,collect,device_for,gradient_loss,make_confidence_input,read_base_frame
+from mcft_net import build_model,collect,device_for,gradient_loss,make_confidence_input,observation_downsample,read_base_frame
 from mcft_hf_stream import VimeoMCFTStream
 
 
@@ -21,7 +21,7 @@ class PairDataset(Dataset):
         return tuple(result)
 
 
-def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed,max_frames=0,base_path=None):
+def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed,max_frames=0,base_path=None,degradation='area'):
     anchors=sorted(json.loads(Path(anchor_path).read_text())['anchor_indices']);aset=set(anchors)
     caps=[cv2.VideoCapture(p) for p in (gt_path,lr_path,candidate_path)];rng=np.random.default_rng(seed)
     base_cap=cv2.VideoCapture(base_path) if base_path else None
@@ -33,7 +33,7 @@ def collect_pairs(gt_path,lr_path,candidate_path,anchor_path,patch,per_pair,seed
         gt,lr,candidate=[frame for _,frame in reads]
         if index not in aset:
             base=read_base_frame(base_cap,lr,index,gt.shape[1],gt.shape[0])
-            current=(make_confidence_input(base,candidate,lr,index,anchors),gt,lr,index)
+            current=(make_confidence_input(base,candidate,lr,index,anchors,degradation),gt,lr,index)
             if previous is not None and previous[3]==index-1:
                 h,w=gt.shape[:2]
                 for _ in range(per_pair):
@@ -66,19 +66,19 @@ def read_clip_manifest(path):
     return clips
 
 
-def collect_manifest_pairs(manifest,patch,per_pair,seed,max_frames=0):
+def collect_manifest_pairs(manifest,patch,per_pair,seed,max_frames=0,degradation='area'):
     datasets=[]
     for index,clip in enumerate(read_clip_manifest(manifest)):
         datasets.append(collect_pairs(clip['gt'],clip['lr'],clip['candidate'],clip['anchors'],
-                                       patch,per_pair,seed+index,max_frames,clip.get('base')))
+                                       patch,per_pair,seed+index,max_frames,clip.get('base'),degradation))
     return datasets[0] if len(datasets)==1 else ConcatDataset(datasets)
 
 
-def collect_manifest_validation(manifest,patch,per_frame,seed,max_frames=0):
+def collect_manifest_validation(manifest,patch,per_frame,seed,max_frames=0,degradation='area'):
     datasets=[]
     for index,clip in enumerate(read_clip_manifest(manifest)):
         datasets.append(collect(clip['gt'],clip['lr'],clip['candidate'],clip['anchors'],patch,
-                                per_frame,seed+index,max_frames,'confidence',clip.get('base')))
+                                per_frame,seed+index,max_frames,'confidence',clip.get('base'),'true',degradation))
     return datasets[0] if len(datasets)==1 else ConcatDataset(datasets)
 
 
@@ -123,7 +123,7 @@ def frame_loss(model,teacher,x,target,lr,args):
     base=x[:,:3];protected=x[:,3:6];prediction=model(x,base)
     charb=torch.mean(torch.sqrt((prediction-target)**2+1e-6))
     grad=gradient_loss(prediction,target)
-    observation=torch.mean(torch.abs(torch.nn.functional.avg_pool2d(prediction,2)-lr))
+    observation=torch.mean(torch.abs(observation_downsample(prediction,args.degradation,lr.shape[-2:])-lr))
     pred_patch=torch.mean(torch.abs(prediction-target),dim=(1,2,3));prot_patch=torch.mean(torch.abs(protected-target),dim=(1,2,3))
     guard=torch.mean(torch.relu(pred_patch-prot_patch))
     with torch.inference_mode():teacher_prediction=teacher(x,base)
@@ -178,13 +178,13 @@ def train(args):
     for p in teacher.parameters():p.requires_grad_(False)
     reference={name:p.detach().clone() for name,p in model.named_parameters()}
     if args.reds_manifest:
-        pairs=collect_manifest_pairs(args.reds_manifest,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames)
+        pairs=collect_manifest_pairs(args.reds_manifest,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.degradation)
     else:
-        pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base)
+        pairs=collect_pairs(args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors,args.patch,args.reds_patches_per_pair,args.seed,args.max_reds_frames,args.reds_base,args.degradation)
     if args.val_manifest:
-        validation=collect_manifest_validation(args.val_manifest,args.patch,args.val_patches_per_frame,19,args.max_val_frames)
+        validation=collect_manifest_validation(args.val_manifest,args.patch,args.val_patches_per_frame,19,args.max_val_frames,args.degradation)
     else:
-        validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,'confidence',args.val_base)
+        validation=collect(args.val_gt,args.val_lr,args.val_candidate,args.val_anchors,args.patch,args.val_patches_per_frame,19,args.max_val_frames,'confidence',args.val_base,'true',args.degradation)
     optimizer=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=1e-4);best=math.inf
     if args.pairs_only_steps:
         reds_loader=DataLoader(pairs,batch_size=args.batch_size,shuffle=True,num_workers=0);reds_iter=iter(reds_loader)
@@ -236,7 +236,7 @@ def main():
     p.add_argument('--val-every',type=int,default=100,help='Validation interval for --pairs-only-steps.')
     p.add_argument('--patch',type=int,default=96);p.add_argument('--batch-size',type=int,default=8);p.add_argument('--val-patches-per-frame',type=int,default=4);p.add_argument('--max-reds-frames',type=int,default=0);p.add_argument('--max-val-frames',type=int,default=0)
     p.add_argument('--lr',type=float,default=5e-5);p.add_argument('--distill-weight',type=float,default=0.10);p.add_argument('--edge-weight',type=float,default=0.05);p.add_argument('--ssim-weight',type=float,default=0.05);p.add_argument('--gradient-weight',type=float,default=0.15);p.add_argument('--texture-weight',type=float,default=0.0);p.add_argument('--temporal-weight',type=float,default=0.10);p.add_argument('--l2sp-weight',type=float,default=0.01)
-    p.add_argument('--shuffle-buffer',type=int,default=16);p.add_argument('--flow-method',choices=('farneback','dis'),default='dis');p.add_argument('--proposal-strength',type=float,default=0.5);p.add_argument('--log-every',type=int,default=8);p.add_argument('--seed',type=int,default=7);p.add_argument('--device',default='auto')
+    p.add_argument('--shuffle-buffer',type=int,default=16);p.add_argument('--flow-method',choices=('farneback','dis'),default='dis');p.add_argument('--proposal-strength',type=float,default=0.5);p.add_argument('--degradation',choices=('area','bicubic'),default='area');p.add_argument('--log-every',type=int,default=8);p.add_argument('--seed',type=int,default=7);p.add_argument('--device',default='auto')
     args=p.parse_args()
     if not args.reds_manifest and not all((args.reds_gt,args.reds_lr,args.reds_candidate,args.reds_anchors)):
         p.error('provide --reds-manifest or all four REDS training paths')

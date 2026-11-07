@@ -938,7 +938,7 @@ The anchor-budget sweep uses the same common-frame evaluation mask:
 
 The gain is monotonic with diminishing returns: 0%→5% gives `+0.3088 dB`,
 5%→10% gives `+0.0998 dB`, and 10%→20% gives `+0.0671 dB`. Per-clip raw
-CSVs and 10,000-resample clip-bootstrap intervals are stored in
+CSVs and 10,000-resample clip-level bootstrap intervals are stored in
 `benchmarks/reds_*_e1_final.csv`, `benchmarks/reds_*_e3_anchor_budget.csv`,
 `benchmarks/reds_e1_anchor_causality_bootstrap.csv`, and
 `benchmarks/reds_e3_anchor_budget_bootstrap.csv`.

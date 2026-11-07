@@ -1,4 +1,4 @@
-"""Summarize held-out REDS comparisons with paired bootstrap intervals."""
+"""Summarize held-out REDS comparisons with clip-level paired bootstrap intervals."""
 from __future__ import annotations
 
 import csv
@@ -37,6 +37,12 @@ def bootstrap(values, seed=7, n=10000):
     return mean(values), estimates[int(0.025 * n)], estimates[int(0.975 * n)]
 
 
+def clip_bootstrap(values_by_clip, seed=7, n=10000):
+    """Bootstrap clip means, preserving temporal correlation within clips."""
+    clip_means = [mean(values) for values in values_by_clip if values]
+    return bootstrap(clip_means, seed, n)
+
+
 def main():
     clips = {clip: read_clip(clip) for clip in CLIPS}
     summary_rows = []
@@ -55,20 +61,23 @@ def main():
             deltas = []
             for clip in CLIPS:
                 common = sorted(set(clips[clip]["replay"]) & set(clips[clip][baseline]))
+                clip_deltas = []
                 for frame in common:
                     a = clips[clip]["replay"][frame][metric]
                     b = clips[clip][baseline][frame][metric]
                     if a.lower() != "nan" and b.lower() != "nan":
                         # Positive means replay is better; errors are inverted.
                         sign = 1 if metric in ("psnr_y", "ssim_y") else -1
-                        deltas.append(sign * (float(a) - float(b)))
-            m, lo, hi = bootstrap(deltas)
-            interval_rows.append({"comparison": f"replay-vs-{baseline}", "metric": metric, "delta": m, "ci95_low": lo, "ci95_high": hi, "frames": len(deltas)})
+                        clip_deltas.append(sign * (float(a) - float(b)))
+                deltas.append(clip_deltas)
+            flat = [value for values in deltas for value in values]
+            m, lo, hi = clip_bootstrap(deltas)
+            interval_rows.append({"comparison": f"replay-vs-{baseline}", "metric": metric, "delta": mean(flat), "ci95_low": lo, "ci95_high": hi, "frames": len(flat), "clips": len([v for v in deltas if v]), "bootstrap_unit": "clip"})
     with (ROOT / "heldout_summary.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=("method", "metric", "mean", "frames"))
         writer.writeheader(); writer.writerows(summary_rows)
     with (ROOT / "heldout_bootstrap.csv").open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=("comparison", "metric", "delta", "ci95_low", "ci95_high", "frames"))
+        writer = csv.DictWriter(f, fieldnames=("comparison", "metric", "delta", "ci95_low", "ci95_high", "frames", "clips", "bootstrap_unit"))
         writer.writeheader(); writer.writerows(interval_rows)
     for row in summary_rows:
         print(f"{row['method']:11s} {row['metric']:22s} {row['mean']:.6f}")

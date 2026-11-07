@@ -114,6 +114,14 @@ def make_confidence_input(base,candidate,lr,index,anchors,degradation='area'):
     return np.concatenate((feature,observation,edge,texture),axis=2)
 
 
+def observation_downsample(prediction, degradation, size=None):
+    """Apply the declared LR observation operator to an NCHW tensor."""
+    if degradation == 'bicubic':
+        if size is None: size=(prediction.shape[-2]//2, prediction.shape[-1]//2)
+        return torch.nn.functional.interpolate(prediction, size=size, mode='bicubic', align_corners=False)
+    return torch.nn.functional.avg_pool2d(prediction, 2)
+
+
 def read_base_frame(base_cap, lr_frame, index, width, height):
     if base_cap is None:
         return cv2.resize(lr_frame,(width,height),interpolation=cv2.INTER_CUBIC)
@@ -189,7 +197,7 @@ def train(args):
             x=x.to(device);y=y.to(device);lr=lr.to(device);base=x[:,:3]
             prediction=model(x,base);charb=torch.mean(torch.sqrt((prediction-y)**2+1e-6))
             grad=gradient_loss(prediction,y)
-            observed_prediction=torch.nn.functional.interpolate(prediction,size=lr.shape[-2:],mode='bicubic',align_corners=False) if args.degradation=='bicubic' else torch.nn.functional.avg_pool2d(prediction,2)
+            observed_prediction=observation_downsample(prediction,args.degradation,lr.shape[-2:])
             observation=torch.mean(torch.abs(observed_prediction-lr))
             protected=x[:,3:6] if args.architecture in ('protected','confidence') else base
             residual=torch.mean(torch.abs(prediction-protected))
@@ -238,6 +246,13 @@ def blend_prediction(base, prediction, alpha):
         0, 255).astype(np.uint8)
 
 
+def fullframe_batch(model, features, device):
+    """Run the same full-frame model path used by batched inference."""
+    tensor=torch.from_numpy(np.stack(features)).permute(0,3,1,2).float().to(device)
+    with torch.inference_mode():
+        return model(tensor,tensor[:,:3]).permute(0,2,3,1).cpu().numpy()
+
+
 def infer(args):
     if args.tile < 0 or args.overlap < 0 or (args.tile > 0 and args.overlap >= args.tile):
         raise ValueError('Require tile >= 0, overlap >= 0, and overlap < tile when tiled')
@@ -267,8 +282,7 @@ def infer(args):
                              if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
                     features.append(feature);bases.append(base);slots.append(index-start)
             if features:
-                tensor=torch.from_numpy(np.stack(features)).permute(0,3,1,2).float().to(device)
-                with torch.inference_mode():batch=model(tensor,tensor[:,:3]).permute(0,2,3,1).cpu().numpy()
+                batch=fullframe_batch(model,features,device)
                 for slot,out,base in zip(slots,batch,bases):
                     prediction=np.clip(out*255,0,255).astype(np.float32)
                     records[slot]=blend_prediction(base,prediction,args.blend_alpha)
