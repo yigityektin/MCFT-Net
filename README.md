@@ -25,7 +25,9 @@ large black-box VSR model; it learns how to refine and trust the MCFT proposal.
 
 ## Problem Setup
 
-The project uses a sparse-anchor super-resolution protocol:
+The project uses a specialized sparse-anchor super-resolution protocol. MCFT-Net
+is not claimed to be a general anchors-free VSR replacement; its contribution
+is anchor-aware refinement when a small budget of true HR frames is available:
 
 ```text
 Input:
@@ -688,11 +690,25 @@ The requirements file uses bounded versions for reproducibility while leaving
 the PyTorch CUDA wheel choice to the host. The reported GPU experiments used
 BasicSR 1.4.2, PyTorch 2.11.0+cu128 (L40S), and TorchVision 0.26.0+cu128.
 Install the matching CUDA wheels from the official PyTorch index before the
-requirements file when reproducing on a GPU. Run the source smoke test with:
+requirements file when reproducing on a GPU. Run the structural source smoke
+test with:
 
 ```bash
 python scripts/smoke_test.py
 ```
+
+This checks syntax and expected training/inference entry points only. On a GPU
+environment, an optional checkpoint argument additionally verifies checkpoint
+loading and one real model forward pass:
+
+```bash
+python scripts/smoke_test.py \
+  --model checkpoints/mcft_net_final.pth \
+  --device cuda
+```
+
+This is still a short model sanity check, not a substitute for end-to-end
+video inference and non-anchor metric evaluation.
 
 `ffmpeg` is required for video encoding/decoding workflows and should be
 installed separately.
