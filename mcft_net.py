@@ -224,7 +224,7 @@ def tiled(model,feature,device,tile,overlap):
     if tile<=0:
         with torch.inference_mode():
             tensor=torch.from_numpy(feature).permute(2,0,1)[None].float().to(device)
-            return np.clip(model(tensor,tensor[:,:3])[0].permute(1,2,0).cpu().numpy()*255,0,255).astype(np.uint8)
+            return np.clip(model(tensor,tensor[:,:3])[0].permute(1,2,0).cpu().numpy()*255,0,255).astype(np.float32)
     tile=min(tile,h,w); overlap=min(overlap,max(tile-1,0)); step=max(1,tile-overlap)
     ys=list(range(0,max(h-tile,0)+1,step));xs=list(range(0,max(w-tile,0)+1,step))
     if not ys or ys[-1]!=h-tile:ys.append(max(h-tile,0))
