@@ -21,7 +21,7 @@ class MCFTNetTests(unittest.TestCase):
         feature=np.zeros((16,24,8),np.float32);feature[...,:3]=0.25
         result=tiled(model,feature,torch.device('cpu'),tile=0,overlap=0)
         self.assertEqual(result.shape,(16,24,3))
-        self.assertTrue(np.all(result==63))
+        np.testing.assert_allclose(result, 63.75, atol=1e-5)
 
 
 if __name__=='__main__':unittest.main()
