@@ -19,12 +19,14 @@ def main():
 
         device = torch.device(args.device)
         checkpoint = torch.load(args.model, map_location=device, weights_only=True)
+        architecture = checkpoint.get("architecture", "legacy")
         model = mcft_net.build_model(
-            checkpoint.get("architecture", "legacy"),
+            architecture,
             checkpoint["width"], checkpoint["blocks"]
         ).to(device).eval()
         model.load_state_dict(checkpoint["state"])
-        x = torch.zeros(1, 9, 32, 32, device=device)
+        input_channels = 11 if architecture == "confidence" else 8
+        x = torch.zeros(1, input_channels, 32, 32, device=device)
         with torch.inference_mode():
             y = model(x, x[:, :3])
         assert tuple(y.shape) == (1, 3, 32, 32), tuple(y.shape)
