@@ -227,6 +227,13 @@ def tiled(model,feature,device,tile,overlap):
     return np.clip(acc/np.maximum(weight,1e-6)*255,0,255).astype(np.float32)
 
 
+def blend_prediction(base, prediction, alpha):
+    """Apply the same conservative blend in single- and batch-frame paths."""
+    return np.clip(
+        base.astype(np.float32) + alpha * (prediction.astype(np.float32) - base.astype(np.float32)),
+        0, 255).astype(np.uint8)
+
+
 def infer(args):
     if args.tile < 0 or args.overlap < 0 or (args.tile > 0 and args.overlap >= args.tile):
         raise ValueError('Require tile >= 0, overlap >= 0, and overlap < tile when tiled')
@@ -260,7 +267,7 @@ def infer(args):
                 with torch.inference_mode():batch=model(tensor,tensor[:,:3]).permute(0,2,3,1).cpu().numpy()
                 for slot,out,base in zip(slots,batch,bases):
                     prediction=np.clip(out*255,0,255).astype(np.float32)
-                    records[slot]=np.clip(base.astype(np.float32)+args.blend_alpha*(prediction-base.astype(np.float32)),0,255).astype(np.uint8)
+                    records[slot]=blend_prediction(base,prediction,args.blend_alpha)
             for offset,frame in enumerate(records):
                 writer.write(frame);print(f'[{start+offset+1}/{n}]')
         candidate.release();lr.release();writer.release()
@@ -276,10 +283,7 @@ def infer(args):
                      if checkpoint.get('architecture')=='confidence' else make_input(base,feature_candidate,index,anchors))
             base_frame=base
             c=tiled(model,feature,device,args.tile,args.overlap)
-            if args.blend_alpha < 1.0:
-                c=np.clip(base_frame.astype(np.float32)+args.blend_alpha*(c.astype(np.float32)-base_frame.astype(np.float32)),0,255).astype(np.uint8)
-            else:
-                c=np.clip(c,0,255).astype(np.uint8)
+            c=blend_prediction(base_frame,c,args.blend_alpha)
         writer.write(c);print(f'[{index+1}/{n}]')
     candidate.release();lr.release();writer.release()
     if base_cap:base_cap.release()
