@@ -1046,3 +1046,21 @@ clips.
 Most SOTA tables use different protocols, often canonical REDS4 x4, heavy
 training, and no sparse true-HR anchor input. MCFT is best understood as a
 sparse-reference reconstruction method with a tiny learned refinement module.
+
+## Verified archived learned-replay comparison
+
+Same five clips (007, 013, 015, 017, 020), non-anchor frames:
+
+| Method | PSNR-Y | SSIM-Y | Edge-MAE | Temporal-MAE |
+| --- | ---: | ---: | ---: | ---: |
+| MCFT v3 | 30.6312 | 0.923317 | 22.8300 | 6.2827 |
+| Learned replay | **31.7331** | **0.936913** | **19.3744** | **5.6218** |
+
+Learned replay improves PSNR-Y by **+1.1018 dB** on this matched five-clip
+protocol. Clip 000 is excluded because no archived learned video is available.
+
+MCFT-Net is a backbone-adaptable sparse-reference refinement framework. The
+interface is general, but learned checkpoint performance is
+candidate/degradation-specific; each checkpoint must be evaluated with the
+candidate distribution used during training.
+
