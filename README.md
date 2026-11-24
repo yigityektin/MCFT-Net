@@ -14,7 +14,7 @@ tags:
 # MCFT: Motion-Compensated Frequency Transfer
 
 <p align="center">
-  <img src="assets/mcft-net-logo.png" alt="MCFT-Net logo" width="760">
+  <img src="assets/mcft-net-logo-dark.png" alt="MCFT-Net logo" width="760">
 </p>
 
 MCFT is a sparse-reference video super-resolution project. The input is a
