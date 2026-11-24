@@ -1071,3 +1071,9 @@ candidate distribution used during training.
 > Runtime and peak GPU memory are hardware- and configuration-dependent;
 > reported values should be interpreted only for the specified GPU and
 > inference settings.
+
+## Training hardware
+
+MCFT-Net experiments were trained and evaluated on NVIDIA L40S, A100,
+and H100 GPUs. Runtime and peak GPU memory are hardware- and
+configuration-dependent, so no single universal runtime is reported.
