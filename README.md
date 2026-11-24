@@ -63,20 +63,11 @@ the result with frames that are already known.
 
 ## Method Overview
 
-```mermaid
-flowchart LR
-    LR[Low-resolution frame] --> B[Base frame]
-    A[True HR anchor frames] --> M[Motion estimation]
-    B --> M
-    M --> F[Motion-compensated frequency transfer]
-    A --> F
-    LR --> F
-    F --> C[Deterministic MCFT v3 candidate]
-    LR --> N[MCFT-Net confidence CNN]
-    B --> N
-    C --> N
-    N --> O[Super-resolved output]
-```
+<p align="center">
+  <img src="assets/mcft-method-overview.svg"
+       alt="MCFT-Net method overview"
+       width="100%">
+</p>
 
 The method has two stages:
 

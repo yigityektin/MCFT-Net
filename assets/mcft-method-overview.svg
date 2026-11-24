@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560">
+<defs>
+  <linearGradient id="bg" x1="0" x2="1">
+    <stop offset="0" stop-color="#0d1117"/>
+    <stop offset="1" stop-color="#111827"/>
+  </linearGradient>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+    <path d="M0,0 L9,3 L0,6 Z" fill="#67e8f9"/>
+  </marker>
+  <style>
+    .box{stroke-width:2;rx:14}
+    .input{fill:#12345b;stroke:#22d3ee}
+    .proc{fill:#312e81;stroke:#818cf8}
+    .out{fill:#075985;stroke:#38bdf8}
+    text{font-family:Arial,sans-serif;fill:#f8fafc}
+    .label{font-size:18px;font-weight:600}
+    .small{font-size:15px}
+    line,path{stroke:#67e8f9;stroke-width:2.5;fill:none;marker-end:url(#arrow)}
+  </style>
+</defs>
+<rect width="1200" height="560" fill="url(#bg)"/>
+<text x="600" y="42" text-anchor="middle" font-size="28" font-weight="700">MCFT-Net method overview</text>
+
+<rect class="box input" x="40" y="105" width="190" height="72"/>
+<text class="label" x="135" y="135" text-anchor="middle">Low-resolution</text>
+<text class="small" x="135" y="158" text-anchor="middle">frame</text>
+
+<rect class="box input" x="40" y="270" width="190" height="72"/>
+<text class="label" x="135" y="300" text-anchor="middle">True HR anchor</text>
+<text class="small" x="135" y="323" text-anchor="middle">frames</text>
+
+<rect class="box proc" x="300" y="185" width="190" height="72"/>
+<text class="label" x="395" y="215" text-anchor="middle">Bicubic/base</text>
+<text class="small" x="395" y="238" text-anchor="middle">frame</text>
+
+<rect class="box proc" x="555" y="105" width="210" height="72"/>
+<text class="label" x="660" y="135" text-anchor="middle">Motion estimation</text>
+
+<rect class="box proc" x="555" y="270" width="210" height="72"/>
+<text class="label" x="660" y="300" text-anchor="middle">Frequency transfer</text>
+<text class="small" x="660" y="323" text-anchor="middle">with motion compensation</text>
+
+<rect class="box proc" x="830" y="105" width="220" height="72"/>
+<text class="label" x="940" y="135" text-anchor="middle">Deterministic</text>
+<text class="small" x="940" y="158" text-anchor="middle">MCFT v3 candidate</text>
+
+<rect class="box proc" x="830" y="270" width="220" height="72"/>
+<text class="label" x="940" y="300" text-anchor="middle">MCFT-Net</text>
+<text class="small" x="940" y="323" text-anchor="middle">confidence CNN</text>
+
+<rect class="box out" x="830" y="430" width="220" height="72"/>
+<text class="label" x="940" y="460" text-anchor="middle">Super-resolved</text>
+<text class="small" x="940" y="483" text-anchor="middle">output</text>
+
+<path d="M230 141 L300 215"/>
+<path d="M230 306 L555 141"/>
+<path d="M490 221 L555 141"/>
+<path d="M660 177 L660 270"/>
+<path d="M230 306 L555 306"/>
+<path d="M765 141 L830 141"/>
+<path d="M765 306 L830 306"/>
+<path d="M1050 306 L1090 306 L1090 466 L1050 466"/>
+<path d="M230 141 L500 141 L500 306 L555 306"/>
+</svg>
