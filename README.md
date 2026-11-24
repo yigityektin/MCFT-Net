@@ -65,7 +65,7 @@ the result with frames that are already known.
 
 ```mermaid
 flowchart LR
-    LR[Low-resolution frame] --> B[Bicubic/base frame]
+    LR[Low-resolution frame] --> B[Base frame]
     A[True HR anchor frames] --> M[Motion estimation]
     B --> M
     M --> F[Motion-compensated frequency transfer]
@@ -1068,3 +1068,6 @@ interface is general, but learned checkpoint performance is
 candidate/degradation-specific; each checkpoint must be evaluated with the
 candidate distribution used during training.
 
+> Runtime and peak GPU memory are hardware- and configuration-dependent;
+> reported values should be interpreted only for the specified GPU and
+> inference settings.
