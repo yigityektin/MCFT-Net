@@ -64,9 +64,7 @@ the result with frames that are already known.
 ## Method Overview
 
 <p align="center">
-  <img src="assets/mcft-method-overview.svg"
-       alt="MCFT-Net method overview"
-       width="100%">
+![MCFT-Net method overview](https://huggingface.co/yyektin/MCFT-Net/resolve/main/assets/mcft-method-overview.svg)
 </p>
 
 The method has two stages:
