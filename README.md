@@ -4,18 +4,14 @@
   <img src="assets/mcft-net-logo-dark.png" alt="MCFT-Net logo" width="760">
 </p>
 
----
-library_name: pytorch
-license: mit
-datasets:
-  - snah/REDS
-  - bijinc/vimeo-90k-mini
-tags:
-  - video-super-resolution
-  - image-restoration
-  - computer-vision
-  - optical-flow
----
+## Model metadata
+
+| Field | Value |
+|---|---|
+| Library | PyTorch |
+| License | MIT |
+| Datasets | `snah/REDS`, `bijijinc/vimeo-90k-mini` |
+| Tags | video-super-resolution, image-restoration, computer-vision, optical-flow |
 
 MCFT is a sparse-reference video super-resolution project. The input is a
 low-resolution video plus a small budget of true high-resolution anchor frames.
