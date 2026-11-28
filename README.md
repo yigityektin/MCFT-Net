@@ -1,3 +1,9 @@
+# MCFT: Motion-Compensated Frequency Transfer
+
+<p align="center">
+  <img src="assets/mcft-net-logo-dark.png" alt="MCFT-Net logo" width="760">
+</p>
+
 ---
 library_name: pytorch
 license: mit
@@ -10,12 +16,6 @@ tags:
   - computer-vision
   - optical-flow
 ---
-
-# MCFT: Motion-Compensated Frequency Transfer
-
-<p align="center">
-  <img src="assets/mcft-net-logo-dark.png" alt="MCFT-Net logo" width="760">
-</p>
 
 MCFT is a sparse-reference video super-resolution project. The input is a
 low-resolution video plus a small budget of true high-resolution anchor frames.
